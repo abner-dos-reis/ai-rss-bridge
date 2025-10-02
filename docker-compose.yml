@@ -1,0 +1,29 @@
+services:
+  backend:
+    build: ./backend
+    container_name: ai-rss-backend
+    ports:
+      - "127.0.0.1:5000:8895"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - ai-rss-network
+
+  frontend:
+    build: ./frontend
+    container_name: ai-rss-frontend
+    ports:
+      - "127.0.0.1:8895:80"
+    depends_on:
+      - backend
+    networks:
+      - ai-rss-network
+
+volumes:
+  data:
+
+networks:
+  ai-rss-network:
+    driver: bridge
