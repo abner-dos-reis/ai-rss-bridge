@@ -196,11 +196,17 @@ Feed Reader ← Auto Updates ← Smart Scraper ← Saved Patterns
 - ⚠️ **Pattern Recognition**: May need manual re-analysis for complex site changes
 
 ### 🔮 Future Enhancements
-- 🌍 **Multi-language Support**: Generate feeds in different languages using AI translation
+- 🔐 **Authentication system for protected content access**
+- � **Universal content aggregation (LinkedIn, forums, groups)**
+- �🌍 **Multi-language Support**: Generate feeds in different languages using AI translation
 - 📊 **Analytics Dashboard**: Feed performance and update statistics
 - 🔄 **Webhook Support**: Real-time notifications for feed updates
 - 🎯 **Custom Patterns**: User-defined extraction rules
 - 📱 **Mobile App**: Native mobile application
+
+For now you can use [IMAP2RSS integration for email newsletters](https://github.com/abner-dos-reis/Imap2RSS)
+
+✨ **Vision**: Transform any link into RSS XML for feed reader apps
 
 ## 🛠️ Development
 
