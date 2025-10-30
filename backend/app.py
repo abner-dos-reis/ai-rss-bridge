@@ -620,20 +620,31 @@ def generate_rss():
                     if match:
                         date_text = match.group(0)
                 
-                # Filter out articles older than 2 years
+                # Filter out articles older than 6 months
                 from datetime import datetime, timedelta
                 is_recent = True
                 if date_text:
                     try:
-                        # Try to parse year
+                        # Try to parse full date or year/month
                         import re
-                        year_match = re.search(r'\b(20\d{2})\b', date_text)
-                        if year_match:
-                            year = int(year_match.group(1))
-                            current_year = datetime.now().year
-                            if year < current_year - 2:  # Older than 2 years
+                        from dateutil import parser as date_parser
+                        
+                        # Try full date parsing first
+                        try:
+                            parsed_date = date_parser.parse(date_text, fuzzy=True)
+                            cutoff_date = datetime.now() - timedelta(days=180)  # 6 months
+                            if parsed_date < cutoff_date:
                                 is_recent = False
-                                print(f"Skipping old article from {year}: {title[:50]}...")
+                                print(f"Skipping old article from {parsed_date.strftime('%Y-%m-%d')}: {title[:50]}...")
+                        except:
+                            # Fallback: parse year only
+                            year_match = re.search(r'\b(20\d{2})\b', date_text)
+                            if year_match:
+                                year = int(year_match.group(1))
+                                current_year = datetime.now().year
+                                if year < current_year:  # Not from current year
+                                    is_recent = False
+                                    print(f"Skipping old article from {year}: {title[:50]}...")
                     except:
                         pass  # If can't parse, include it
                 

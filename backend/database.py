@@ -121,8 +121,8 @@ class DatabaseManager:
                 'ai_provider': row[4],
                 'extraction_patterns': row[5],
                 'last_ai_analysis': row[6],
-                'created_at': row[7],
-                'updated_at': row[8]
+                'created_at': row[7] + 'Z' if row[7] and 'Z' not in row[7] else row[7],  # Add UTC indicator
+                'updated_at': row[8] + 'Z' if row[8] and 'Z' not in row[8] else row[8]   # Add UTC indicator
             })
         
         conn.close()

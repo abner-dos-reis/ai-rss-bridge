@@ -10,3 +10,4 @@ schedule
 cryptography
 cloudscraper
 requests[socks]
+python-dateutil

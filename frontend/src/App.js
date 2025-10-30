@@ -240,6 +240,7 @@ function App() {
 
   const updateFeed = async (feedId) => {
     setLoading(true);
+    setError(''); // Clear previous errors
     try {
       const res = await fetch(`/api/update/${feedId}`, {
         method: 'POST',
@@ -252,7 +253,7 @@ function App() {
       if (res.status === 200) {
         const itemCount = data.items_count || 0;
         const method = data.method || 'unknown';
-        setSuccessMessage(`✅ Feed updated! Found ${itemCount} items using ${method === 'pattern_based_scraping' ? 'smart patterns' : method}`);
+        alert(`✅ Feed updated successfully!\n\nFound ${itemCount} new items using ${method === 'pattern_based_scraping' ? 'smart patterns' : method}`);
         loadFeeds();
       } else {
         setError(data.error || 'Update failed');
@@ -270,6 +271,7 @@ function App() {
     }
     
     setLoading(true);
+    setError(''); // Clear previous errors
     try {
       const res = await fetch(`/api/reanalyze/${feedId}`, {
         method: 'POST',
@@ -280,13 +282,15 @@ function App() {
       const data = await res.json();
       
       if (res.status === 200) {
-        alert(`Feed re-analyzed successfully! Method: ${data.method}. Updated ${data.items_count} items.`);
+        alert(`✅ Feed re-analyzed successfully!\n\nMethod: ${data.method}\nUpdated ${data.items_count} items\nPatterns updated: ${data.patterns_updated ? 'Yes' : 'No'}`);
         loadFeeds();
       } else {
+        alert(`❌ Re-analysis failed:\n\n${data.error || 'Unknown error'}\n\n${data.message || ''}`);
         setError(data.error || 'Re-analysis failed');
       }
     } catch (err) {
-      setError('Error re-analyzing feed');
+      alert(`❌ Error re-analyzing feed:\n\n${err.message}`);
+      setError('Error re-analyzing feed: ' + err.message);
     } finally {
       setLoading(false);
     }
