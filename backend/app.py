@@ -441,7 +441,7 @@ def extract_structured_content_from_html(soup, url):
                     print(f"  ⚠️ Content extraction error: {e}")
                     content = ""
                 
-                    if title and len(title) > 3:  # Only include if we have a meaningful title
+                if title and len(title) > 3:  # Only include if we have a meaningful title
                     structured_content.append(f"""
 ARTICLE {i+1}:
 TITLE: {title}
