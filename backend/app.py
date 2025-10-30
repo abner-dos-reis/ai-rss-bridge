@@ -86,8 +86,21 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    # Ensure API routes return JSON (not HTML) for errors ONLY
+    # Ensure ALL /api/ responses have correct Content-Type
     if request.path.startswith('/api/'):
+        # If response is JSON but doesn't have correct Content-Type, fix it
+        if not response.content_type or 'application/json' not in response.content_type:
+            # Check if data looks like JSON
+            try:
+                data = response.get_data(as_text=True)
+                if data.strip().startswith('{') or data.strip().startswith('['):
+                    # It's JSON data without proper Content-Type!
+                    print(f"⚠️ Fixing missing JSON Content-Type for {request.path}")
+                    response.headers['Content-Type'] = 'application/json'
+                    return response
+            except:
+                pass
+        
         content_type = response.content_type or ''
         # ONLY convert HTML responses that are errors (4xx, 5xx)
         if 'text/html' in content_type and response.status_code >= 400:
