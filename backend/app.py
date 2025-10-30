@@ -161,6 +161,182 @@ def try_ai_with_fallback(ai_provider_name, url, html_content):
     print(f"❌ All {len(all_keys)} API key(s) failed for {ai_provider_name}")
     return last_error, None
 
+def extract_structured_content_from_html(soup, url):
+    """
+    Extract structured content (articles with titles, links, images, dates) from HTML
+    Returns formatted string for AI processing
+    """
+    # Try to find article elements with common patterns
+    articles = []
+    
+    # Look for article elements
+    articles.extend(soup.find_all(['article']))
+    
+    # Look for divs with article-like classes
+    article_divs = soup.find_all('div', class_=lambda x: x and any(
+        keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item', 'story', 'blog']
+    ))
+    articles.extend(article_divs)
+    
+    # Look for list items that might be articles
+    li_articles = soup.find_all('li', class_=lambda x: x and any(
+        keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item']
+    ))
+    articles.extend(li_articles)
+    
+    print(f"Found {len(articles)} total article elements")
+    
+    # Build structured content
+    structured_content = []
+    base_domain = '/'.join(url.split('/')[:3])  # Get base domain
+    
+    if articles:
+        for i, article in enumerate(articles[:15]):  # Limit to first 15
+            # Extract title
+            title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+            title = title_elem.get_text().strip() if title_elem else f"Article {i+1}"
+            
+            # Extract link
+            link_elem = article.find('a', href=True)
+            link = ""
+            if link_elem:
+                href = link_elem['href']
+                if href.startswith('http'):
+                    link = href
+                elif href.startswith('/'):
+                    link = base_domain + href
+                else:
+                    link = url + '/' + href.lstrip('/')
+            
+            # Extract date
+            date_text = ""
+            time_elem = article.find('time', datetime=True)
+            if time_elem:
+                date_text = time_elem.get('datetime', time_elem.get_text().strip())
+            else:
+                date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
+                    keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
+                ))
+                if date_elem:
+                    date_text = date_elem.get_text().strip()
+            
+            print(f"Found article: {title[:50]}... | Date: {date_text}")
+            
+            # Extract image with comprehensive strategy
+            img_elem = None
+            img_candidates = []
+            
+            # Strategy 1: og:image meta tag
+            og_image = soup.find('meta', property='og:image')
+            if og_image and og_image.get('content'):
+                img_candidates.append(('og:image', og_image['content']))
+            
+            # Strategy 2: Images in absolute positioned divs
+            absolute_divs = article.find_all('div', class_=lambda x: x and any(
+                'absolute' in str(x).lower() for x in [x] if x
+            ))
+            for div in absolute_divs:
+                img = div.find('img', src=True)
+                if img and img.get('src'):
+                    img_candidates.append(('absolute-div', img['src']))
+                    break
+            
+            # Strategy 3: Featured/thumbnail images with srcset support
+            featured_img = article.find('img', class_=lambda x: x and any(
+                keyword in str(x).lower() for keyword in ['featured', 'thumbnail', 'cover', 'hero', 'main', 'banner']
+            ))
+            if featured_img:
+                srcset = featured_img.get('srcset', '')
+                if srcset:
+                    srcs = [s.strip().split(' ')[0] for s in srcset.split(',')]
+                    if srcs:
+                        img_candidates.append(('featured-srcset', srcs[-1]))
+                elif featured_img.get('src'):
+                    img_candidates.append(('featured', featured_img['src']))
+            
+            # Strategy 4: Images in common wrapper classes
+            for wrapper_class in ['image-wrapper', 'post-image', 'article-image', 'media', 'visual', 'wp-post-image']:
+                wrapper = article.find(class_=lambda x: x and wrapper_class in str(x).lower())
+                if wrapper:
+                    img = wrapper.find('img', src=True)
+                    if img:
+                        img_candidates.append(('wrapper', img['src']))
+                        break
+            
+            # Strategy 5: Picture element
+            picture = article.find('picture')
+            if picture:
+                source = picture.find('source', srcset=True)
+                if source:
+                    img_candidates.append(('picture-source', source['srcset'].split(',')[0].strip().split(' ')[0]))
+                img_in_picture = picture.find('img', src=True)
+                if img_in_picture:
+                    img_candidates.append(('picture-img', img_in_picture['src']))
+            
+            # Strategy 6: First significant image (within article element)
+            for img in article.find_all('img', src=True):
+                src = img.get('src', '')
+                alt = img.get('alt', '').lower()
+                width = img.get('width', '')
+                height = img.get('height', '')
+                
+                # Skip small images, icons, and logos
+                if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner', 'pixel', '1x1']):
+                    continue
+                if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji']):
+                    continue
+                try:
+                    if width and int(width) < 100:
+                        continue
+                    if height and int(height) < 100:
+                        continue
+                except:
+                    pass
+                
+                img_candidates.append(('first-valid', src))
+                break
+            
+            # Choose best image candidate
+            image = ""
+            if img_candidates:
+                strategy, src = img_candidates[0]  # Prioritize by order added
+                print(f"Selected image via strategy: {strategy}")
+                
+                # Normalize URL
+                if src.startswith('//'):
+                    image = 'https:' + src
+                elif src.startswith('http'):
+                    image = src
+                elif src.startswith('/'):
+                    image = base_domain + src
+                elif not src.startswith('data:'):
+                    image = base_domain + '/' + src.lstrip('/')
+            
+            # Get content preview
+            content = article.get_text().strip()[:400]  # First 400 chars
+            
+            if title and len(title) > 3:  # Only include if we have a meaningful title
+                structured_content.append(f"""
+ARTICLE {i+1}:
+TITLE: {title}
+LINK: {link}
+DATE: {date_text}
+IMAGE: {image}
+CONTENT: {content}
+---""")
+    
+    if structured_content:
+        return "\n".join(structured_content)
+    else:
+        # Fallback to main content
+        main_content = soup.find(['main', 'div'], class_=lambda x: x and any(
+            keyword in x.lower() for keyword in ['content', 'main', 'body', 'wrapper']
+        ))
+        if main_content:
+            return main_content.get_text()
+        else:
+            return soup.get_text()
+
 @app.route('/api/diagnostics', methods=['GET'])
 def diagnostics():
     """
@@ -565,186 +741,10 @@ def generate_rss():
         articles.extend(li_articles)
         print(f"Found {len(li_articles)} article-like <li> elements (total: {len(articles)})")
         
-        # Build structured content
-        structured_content = []
-        base_domain = '/'.join(url.split('/')[:3])  # Get base domain
+        # Use helper function to extract structured content
+        html_content = extract_structured_content_from_html(soup, url)
         
-        if articles:
-            for i, article in enumerate(articles[:15]):  # Limit to first 15
-                # Try to find title
-                title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-                title = title_elem.get_text().strip() if title_elem else f"Article {i+1}"
-                
-                # Try to find link
-                link_elem = article.find('a', href=True)
-                link = ""
-                if link_elem:
-                    href = link_elem['href']
-                    if href.startswith('http'):
-                        link = href
-                    elif href.startswith('/'):
-                        link = base_domain + href
-                    else:
-                        link = url + '/' + href.lstrip('/')
-                
-                # Try to find date with better detection
-                date_text = ""
-                date_elem = None
-                
-                # Strategy 1: time element with datetime attribute
-                time_elem = article.find('time', datetime=True)
-                if time_elem:
-                    date_text = time_elem.get('datetime', time_elem.get_text().strip())
-                    date_elem = time_elem
-                
-                # Strategy 2: Common date classes
-                if not date_text:
-                    date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
-                        keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
-                    ))
-                    if date_elem:
-                        date_text = date_elem.get_text().strip()
-                
-                # Strategy 3: Meta tags
-                if not date_text:
-                    meta_date = soup.find('meta', property=['article:published_time', 'datePublished'])
-                    if meta_date and meta_date.get('content'):
-                        date_text = meta_date['content']
-                
-                # Strategy 4: Search for year patterns in text
-                if not date_text:
-                    import re
-                    date_pattern = re.compile(r'\b(202[3-9]|20[3-9][0-9])\b')
-                    text_content = article.get_text()
-                    match = date_pattern.search(text_content)
-                    if match:
-                        date_text = match.group(0)
-                
-                # Date filtering DISABLED - Let AI decide relevance
-                # We were filtering too aggressively and missing recent articles
-                # The date detection may parse wrong dates (e.g., copyright years)
-                # Better to send all articles to AI and let it filter by relevance
-                print(f"Found article: {title[:50]}... | Date: {date_text}")
-                
-                # Try to find image with comprehensive strategy
-                img_elem = None
-                img_candidates = []
-                
-                # Strategy 1: Check for og:image meta tag (most reliable)
-                og_image = soup.find('meta', property='og:image')
-                if og_image and og_image.get('content'):
-                    img_candidates.append(('og:image', og_image['content']))
-                
-                # Strategy 2: Look for images in absolute positioned divs (modern sites)
-                absolute_divs = article.find_all('div', class_=lambda x: x and any(
-                    'absolute' in str(x).lower() for x in [x] if x
-                ))
-                for div in absolute_divs:
-                    img = div.find('img', src=True)
-                    if img and img.get('src'):
-                        img_candidates.append(('absolute-div', img['src']))
-                        break
-                
-                # Strategy 3: Featured/thumbnail images with srcset support
-                featured_img = article.find('img', class_=lambda x: x and any(
-                    keyword in str(x).lower() for keyword in ['featured', 'thumbnail', 'cover', 'hero', 'main', 'banner']
-                ))
-                if featured_img:
-                    # Check srcset first (higher quality)
-                    srcset = featured_img.get('srcset', '')
-                    if srcset:
-                        # Get the highest resolution from srcset
-                        srcs = [s.strip().split(' ')[0] for s in srcset.split(',')]
-                        if srcs:
-                            img_candidates.append(('featured-srcset', srcs[-1]))
-                    elif featured_img.get('src'):
-                        img_candidates.append(('featured', featured_img['src']))
-                
-                # Strategy 4: Images in common wrapper classes
-                for wrapper_class in ['image-wrapper', 'post-image', 'article-image', 'media', 'visual', 'wp-post-image']:
-                    wrapper = article.find(class_=lambda x: x and wrapper_class in str(x).lower())
-                    if wrapper:
-                        img = wrapper.find('img', src=True)
-                        if img:
-                            img_candidates.append(('wrapper', img['src']))
-                            break
-                
-                # Strategy 5: Picture element (responsive images)
-                picture = article.find('picture')
-                if picture:
-                    source = picture.find('source', srcset=True)
-                    if source:
-                        img_candidates.append(('picture-source', source['srcset'].split(',')[0].strip().split(' ')[0]))
-                    img_in_picture = picture.find('img', src=True)
-                    if img_in_picture:
-                        img_candidates.append(('picture-img', img_in_picture['src']))
-                
-                # Strategy 6: First significant image
-                for img in article.find_all('img', src=True):
-                    src = img.get('src', '')
-                    alt = img.get('alt', '').lower()
-                    width = img.get('width', '')
-                    height = img.get('height', '')
-                    
-                    # Skip small images, icons, and logos
-                    if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner', 'pixel', '1x1']):
-                        continue
-                    if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji']):
-                        continue
-                    # Skip very small images
-                    try:
-                        if width and int(width) < 100:
-                            continue
-                        if height and int(height) < 100:
-                            continue
-                    except:
-                        pass
-                    
-                    img_candidates.append(('first-valid', src))
-                    break
-                
-                # Choose best image candidate
-                image = ""
-                if img_candidates:
-                    strategy, src = img_candidates[0]  # Prioritize by order added
-                    print(f"Selected image via strategy: {strategy}")
-                    
-                    # Normalize URL
-                    if src.startswith('//'):
-                        image = 'https:' + src
-                    elif src.startswith('http'):
-                        image = src
-                    elif src.startswith('/'):
-                        image = base_domain + src
-                    elif not src.startswith('data:'):
-                        image = base_domain + '/' + src.lstrip('/')
-                
-                # Get content
-                content = article.get_text().strip()[:400]  # First 400 chars
-                
-                if title and len(title) > 3:  # Only include if we have a meaningful title
-                    structured_content.append(f"""
-ARTICLE {i+1}:
-TITLE: {title}
-LINK: {link}
-DATE: {date_text}
-IMAGE: {image}
-CONTENT: {content}
----""")
-        
-        if structured_content:
-            html_content = "\n".join(structured_content)
-        else:
-            # Fallback to main content
-            main_content = soup.find(['main', 'div'], class_=lambda x: x and any(
-                keyword in x.lower() for keyword in ['content', 'main', 'body', 'wrapper']
-            ))
-            if main_content:
-                html_content = main_content.get_text()
-            else:
-                html_content = soup.get_text()
-        
-        # Clean up whitespace - não limitar tamanho aqui, deixar o AI provider fazer
+        # Clean up whitespace
         html_content = ' '.join(html_content.split())
         print(f"HTML content length: {len(html_content)} characters")
         print(f"HTML content preview: {html_content[:300]}...")
@@ -1107,8 +1107,11 @@ def reanalyze_feed(feed_id):
         # Remove script and style elements
         for script in soup(["script", "style", "nav", "footer", "aside", "form", "button"]):
             script.decompose()
-            
-        html_content = ' '.join(soup.get_text().split())[:6000]
+        
+        # Use helper function to extract structured content
+        html_content = extract_structured_content_from_html(soup, feed_info['url'])
+        print(f"HTML content length: {len(html_content)} characters")
+        print(f"HTML content preview: {html_content[:300]}...")
         
         # Get AI provider and extract content with fallback
         if api_key:
