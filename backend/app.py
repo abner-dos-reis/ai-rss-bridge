@@ -347,9 +347,9 @@ def generate_rss():
                     return scraper.get(url, headers=session_headers, timeout=20, allow_redirects=True)
                 strategies.append(("Cloudscraper + Saved Session (logged in)", cloudscraper_with_session))
             
-            # Strategy 1: Cloudscraper (best for Cloudflare/anti-bot protection)
+            # Strategy 1: Cloudscraper with Chrome (best for Cloudflare/anti-bot protection)
             if CLOUDSCRAPER_AVAILABLE:
-                def cloudscraper_fetch():
+                def cloudscraper_chrome():
                     scraper = cloudscraper.create_scraper(
                         browser={
                             'browser': 'chrome',
@@ -360,7 +360,21 @@ def generate_rss():
                     if cookies:
                         scraper.cookies.update(cookies)
                     return scraper.get(url, timeout=20, allow_redirects=True)
-                strategies.append(("Cloudscraper (anti-bot bypass)", cloudscraper_fetch))
+                strategies.append(("Cloudscraper Chrome/Windows", cloudscraper_chrome))
+                
+                # Strategy 1b: Cloudscraper with Firefox (alternative browser)
+                def cloudscraper_firefox():
+                    scraper = cloudscraper.create_scraper(
+                        browser={
+                            'browser': 'firefox',
+                            'platform': 'linux',
+                            'desktop': True
+                        }
+                    )
+                    if cookies:
+                        scraper.cookies.update(cookies)
+                    return scraper.get(url, timeout=20, allow_redirects=True)
+                strategies.append(("Cloudscraper Firefox/Linux", cloudscraper_firefox))
             
             # Strategy 2: Session with full headers and cookies
             def session_fetch():
@@ -394,7 +408,12 @@ def generate_rss():
                 return requests.get(url, headers=minimal_headers, timeout=15, allow_redirects=True)
             strategies.append(("Minimal headers (Firefox)", minimal_fetch))
             
-            # Strategy 6: Simple request (last resort)
+            # Strategy 6: Request without redirects (some sites block on redirect)
+            def no_redirect_fetch():
+                return requests.get(url, headers=headers, timeout=15, allow_redirects=False)
+            strategies.append(("No redirects", no_redirect_fetch))
+            
+            # Strategy 7: Simple request (last resort)
             strategies.append(("Simple request", lambda: requests.get(url, timeout=15)))
             
             last_error = None
@@ -403,7 +422,12 @@ def generate_rss():
                 print(f"  {i}. {name}")
             print("")
             
-            for strategy_name, strategy_func in strategies:
+            import time
+            for i, (strategy_name, strategy_func) in enumerate(strategies):
+                # Add small delay between attempts (except first one)
+                if i > 0:
+                    time.sleep(0.5)  # 500ms delay to avoid rate limiting
+                    
                 try:
                     print(f"▶ Trying strategy: {strategy_name}...")
                     response = strategy_func()
@@ -479,19 +503,15 @@ def generate_rss():
                     
                     # Special case suggestions
                     if 'deeplearning.ai' in url.lower():
-                        error_msg += "\n🎓 DeepLearning.AI specific tips:\n"
-                        if not saved_session:
-                            error_msg += "⚠️ NO LOGIN SESSION FOUND\n"
-                            error_msg += "1. Go to 'Login Sessions' tab\n"
-                            error_msg += "2. Add https://www.deeplearning.ai\n"
-                            error_msg += "3. Login on their site\n"
-                            error_msg += "4. Come back and save session\n"
-                            error_msg += "5. Try generating feed again\n\n"
-                            error_msg += "Without login, DeepLearning.AI blocks all automated access.\n"
-                        else:
-                            error_msg += "✓ Login session found but still blocked\n"
-                            error_msg += "• Session may have expired - try logging in again\n"
-                            error_msg += "• Or try individual article URLs\n"
+                        error_msg += "\n🎓 DeepLearning.AI has very strict anti-bot protection.\n"
+                        error_msg += "Unfortunately, this site blocks automated access even with Cloudscraper.\n\n"
+                        error_msg += "📋 What you can try:\n"
+                        error_msg += "1. Check their official blog RSS feed (if it exists)\n"
+                        error_msg += "2. Subscribe via their newsletter instead\n"
+                        error_msg += "3. Try accessing a specific article URL\n"
+                        error_msg += "4. Use a browser extension to generate RSS\n\n"
+                        error_msg += "⚙️ This is a limitation of web scraping - some sites are intentionally\n"
+                        error_msg += "   designed to prevent automated access.\n"
                     
                     error_msg += f"\n📋 Technical: {last_error}"
                 print(f"All strategies failed: {error_msg}")
