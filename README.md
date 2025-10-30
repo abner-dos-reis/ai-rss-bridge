@@ -2,9 +2,18 @@
 
 > **Transform any website into RSS feeds using Artificial Intelligence**
 
+⚠️ **STATUS: IN ACTIVE DEVELOPMENT** - This project is under active development. While core features work well, not all websites are supported yet. Best results with login-protected sites and major platforms.
+
 A powerful, intelligent RSS feed generator that uses AI to extract structured content from any website and create clean, readable RSS feeds. Features smart pattern learning, automatic updates, and multi-AI provider support.
 
 ![AI RSS Bridge](Screenshots/Screenshot1.png)
+
+## ⚠️ Current Limitations
+
+- 🚧 **Image extraction temporarily disabled** - Working on improved implementation
+- 🌐 **Website compatibility varies** - Some sites with aggressive anti-bot protection may not work
+- ✅ **Best for authenticated sites** - Login sessions work excellently (LinkedIn, private blogs, etc.)
+- 🔄 **Active development** - Features and improvements being added regularly
 
 ## ✨ Key Features
 
@@ -104,6 +113,26 @@ docker compose up --build -d
    - Use the generated RSS URL in your favorite RSS reader
    - Links work with Feedly, Inoreader, or any RSS client
    - Updates automatically every hour (configurable)
+
+## ✅ What Works Best
+
+### 🎯 Excellent Support
+- ✅ **LinkedIn** (with login session) - Posts, articles, newsletters
+- ✅ **Medium** (with login session) - Premium content, private publications
+- ✅ **Private blogs** with authentication
+- ✅ **News sites** with standard article structure
+- ✅ **WordPress sites** - Most themes work well
+
+### ⚡ May Require Retry
+- ⚠️ Some sites with Cloudflare protection
+- ⚠️ Sites with aggressive rate limiting
+- ⚠️ Heavy JavaScript-rendered content
+- ⚠️ Sites with unusual HTML structure
+
+**Pro Tip**: If a site doesn't work immediately, try:
+1. Adding a login session first
+2. Using a different AI provider
+3. Retrying after a few minutes (API rate limits)
 
 ## 🔥 What's New in v2.0
 
