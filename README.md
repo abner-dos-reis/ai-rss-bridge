@@ -2,37 +2,19 @@
 
 > **Transform any website into RSS feeds using Artificial Intelligence**
 
-## 👨‍💻 About This Project
-
-This application was built with **AI assistance for syntax** and **human logic for architecture**. I'm studying to create clean, scalable code, and I keep all my repositories public so everyone can follow my evolution as a developer.
-
-**Tech Stack**: Python (Flask), React, Docker, SQLite  
-**AI Providers**: OpenAI GPT, Google Gemini, Claude, Perplexity
+**Built with**: AI for syntax | Human for logic | Learning clean, scalable code  
+All repos public to show my evolution as a developer 📈
 
 ---
 
-## ⚠️ Project Status
+## ⚠️ Status: IN ACTIVE DEVELOPMENT  
 
-**🚧 IN ACTIVE DEVELOPMENT** - Core features work well, but not all websites are supported yet.
-
-### What Works Best ✅
-- **LinkedIn** (with login session) - Posts, articles, newsletters
-- **Medium** (with login session) - Premium content, private publications  
-- **Private blogs** with authentication
-- **News sites** with standard article structure
-- **WordPress sites** - Most themes work well
-
-### Current Limitations ⚠️
-- 🚧 Image extraction temporarily disabled (being reimplemented)
-- 🌐 Website compatibility varies (some aggressive anti-bot protection)
-- ⚠️ Heavy JavaScript sites may require retry
-- 🔄 Active development - features being added regularly
+**What works**: LinkedIn, Medium (with login), WordPress, most news sites  
+**What doesn't**: Some sites with aggressive anti-bot, image extraction (temp disabled)
 
 ---
 
-## 📖 What is AI RSS Bridge?
-
-A powerful, intelligent RSS feed generator that uses AI to extract structured content from any website and create clean, readable RSS feeds. Features smart pattern learning, automatic updates, and multi-AI provider support.
+A powerful RSS feed generator that uses AI to extract structured content from any website. Features smart pattern learning, automatic updates, and multi-AI provider support.
 
 ![AI RSS Bridge](Screenshots/Screenshot1.png)
 
