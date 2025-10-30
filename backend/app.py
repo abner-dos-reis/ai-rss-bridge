@@ -86,12 +86,34 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    # Ensure API routes return JSON only if they're actually HTML errors
+    # Ensure API routes return JSON (not HTML) for errors
     if request.path.startswith('/api/'):
-        if response.content_type.startswith('text/html') and response.status_code >= 400:
-            # Only convert HTML error responses to JSON
-            error_data = {"error": "Internal server error - HTML response detected", "status": response.status_code}
-            return jsonify(error_data), response.status_code
+        content_type = response.content_type or ''
+        if 'text/html' in content_type:
+            # Convert HTML response to JSON for consistency
+            print(f"⚠️ WARNING: HTML response detected for {request.path} (status {response.status_code})")
+            try:
+                # Try to extract error from HTML
+                html_content = response.get_data(as_text=True)
+                error_msg = "Server returned HTML instead of JSON"
+                
+                # Look for error message in HTML
+                if 'Traceback' in html_content:
+                    error_msg = "Server encountered an internal error (Traceback found)"
+                elif 'Exception' in html_content:
+                    error_msg = "Server encountered an exception"
+                
+                from flask import jsonify as make_json
+                error_response = make_json({
+                    "error": error_msg,
+                    "status": response.status_code,
+                    "hint": "Check backend logs for details"
+                })
+                error_response.status_code = response.status_code if response.status_code >= 400 else 500
+                return error_response
+            except Exception as conv_error:
+                print(f"Failed to convert HTML to JSON: {conv_error}")
+                return response
     return response
 
 # Global error handler to ensure all API responses are JSON
@@ -243,9 +265,30 @@ def extract_structured_content_from_html(soup, url):
                     img_candidates.append(('absolute-div', img['src']))
                     break
             
+            # Strategy 2.5: Images with large width/height attributes (within THIS article)
+            large_imgs = article.find_all('img', src=True)
+            for img in large_imgs:
+                try:
+                    width = img.get('width', '')
+                    height = img.get('height', '')
+                    if width and height:
+                        w = int(width)
+                        h = int(height)
+                        # If image is larger than 400x300, it's likely the main article image
+                        if w >= 400 and h >= 300:
+                            img_candidates.append(('large-dimensions', img['src']))
+                            break
+                except (ValueError, TypeError):
+                    continue
+            
             # Strategy 3: Featured/thumbnail images with srcset support (within THIS article)
             featured_img = article.find('img', class_=lambda x: x and any(
-                keyword in str(x).lower() for keyword in ['featured', 'thumbnail', 'cover', 'hero', 'main', 'banner', 'article-cover']
+                keyword in str(x).lower() for keyword in [
+                    'featured', 'thumbnail', 'cover', 'hero', 'main', 'banner', 
+                    'article-cover', 'entry-image', 'post-image', 
+                    'wp-image', 'object-cover',  # WordPress and Tailwind
+                    'reader-cover', 'evi-image'  # LinkedIn
+                ]
             ))
             if featured_img:
                 srcset = featured_img.get('srcset', '')
@@ -257,7 +300,12 @@ def extract_structured_content_from_html(soup, url):
                     img_candidates.append(('featured', featured_img['src']))
             
             # Strategy 4: Images in common wrapper classes (within THIS article)
-            for wrapper_class in ['image-wrapper', 'post-image', 'article-image', 'media', 'visual', 'wp-post-image', 'entry-image']:
+            wrapper_classes = [
+                'image-wrapper', 'post-image', 'article-image', 'media', 'visual', 
+                'wp-post-image', 'entry-image', 'post-thumbnail', 'attachment',
+                'figure', 'img-wrap', 'photo', 'picture-wrapper'
+            ]
+            for wrapper_class in wrapper_classes:
                 wrapper = article.find(class_=lambda x: x and wrapper_class in str(x).lower())
                 if wrapper:
                     img = wrapper.find('img', src=True)
@@ -1154,8 +1202,9 @@ def reanalyze_feed(feed_id):
             print(f"❌ ERROR in reanalyze: ai_result has no .get()! Type: {type(ai_result)}, Value: {ai_result}")
             return jsonify({"error": f"Internal error: ai_result is {type(ai_result).__name__}, not dict"}), 500
         
-        db.save_feed(
-            url=feed_info['url'],
+        # Update existing feed (preserve feed_id and rss_url)
+        db.update_feed(
+            feed_id=feed_id,
             title=title,
             description=description,
             ai_provider=ai_provider,

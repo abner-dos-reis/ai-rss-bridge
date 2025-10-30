@@ -206,30 +206,69 @@ function App() {
     }
 
     try {
-      const res = await fetch('/api/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, ai_provider: aiProvider })
-      });
+      // Parse multiple URLs (one per line or comma-separated)
+      const urls = url
+        .split(/[\n,]+/) // Split by newline or comma
+        .map(u => u.trim())
+        .filter(u => u.length > 0);
       
-      // Verificar se a resposta é JSON antes de parsear
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const textResponse = await res.text();
-        console.error('Non-JSON response:', textResponse.substring(0, 200));
-        setError(`Server error: Expected JSON response but got ${contentType}. Check backend logs.`);
+      if (urls.length === 0) {
+        setError('Please enter at least one URL');
         setLoading(false);
         return;
       }
+
+      // Process multiple URLs
+      const results = [];
+      const errors = [];
       
-      const data = await res.json();
+      for (let i = 0; i < urls.length; i++) {
+        const currentUrl = urls[i];
+        try {
+          const res = await fetch('/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: currentUrl, ai_provider: aiProvider })
+          });
+          
+          // Verificar se a resposta é JSON antes de parsear
+          const contentType = res.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            const textResponse = await res.text();
+            console.error('Non-JSON response:', textResponse.substring(0, 200));
+            errors.push(`${currentUrl}: Server error - Expected JSON response`);
+            continue;
+          }
+          
+          const data = await res.json();
+          
+          if (res.status !== 200) {
+            errors.push(`${currentUrl}: ${data.error || 'Unknown error'}`);
+          } else {
+            results.push({ url: currentUrl, ...data });
+          }
+        } catch (err) {
+          console.error('API Error for', currentUrl, ':', err);
+          errors.push(`${currentUrl}: ${err.message}`);
+        }
+      }
       
-      if (res.status !== 200) {
-        setError(data.error || 'Unknown error');
-      } else {
-        setResult(data);
+      // Show results
+      if (results.length > 0) {
+        setResult({
+          message: `✅ Successfully created ${results.length} feed(s)`,
+          feeds: results,
+          total: urls.length,
+          success: results.length,
+          failed: errors.length
+        });
         loadFeeds(); // Refresh feeds list
       }
+      
+      if (errors.length > 0) {
+        setError(`Failed to create ${errors.length} feed(s):\n${errors.join('\n')}`);
+      }
+      
     } catch (err) {
       console.error('API Error:', err);
       setError(`Error connecting to API: ${err.message}`);
@@ -907,15 +946,23 @@ function App() {
         <div>
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: 16 }}>
-              <label>Website URL:</label>
-              <input
-                type="url"
-                placeholder="https://example.com"
+              <label>Website URL(s):</label>
+              <textarea
+                placeholder="https://example.com&#10;https://another-site.com&#10;(one URL per line or comma-separated)"
                 value={url}
                 onChange={e => setUrl(e.target.value)}
-                style={getInputStyle()}
+                style={{ 
+                  ...getInputStyle(), 
+                  minHeight: 100, 
+                  fontFamily: 'monospace', 
+                  fontSize: 14,
+                  resize: 'vertical'
+                }}
                 required
               />
+              <small style={{ color: theme === 'dark' ? '#888' : '#666', display: 'block', marginTop: 4 }}>
+                💡 You can enter multiple URLs (one per line or comma-separated)
+              </small>
             </div>
 
             <div style={{ marginBottom: 16 }}>
@@ -1044,68 +1091,153 @@ function App() {
               borderRadius: 4,
               border: `1px solid ${theme === 'dark' ? '#28a745' : '#4caf50'}`
             }}>
-              <h3 style={{ color: theme === 'dark' ? '#4caf50' : '#2e7d32' }}>🎉 RSS Feed Generated Successfully!</h3>
-              <div style={{ 
-                backgroundColor: theme === 'dark' ? '#0d2818' : '#f0f8f0',
-                padding: '12px',
-                borderRadius: '6px',
-                marginBottom: '12px',
-                border: `1px solid ${theme === 'dark' ? '#1e4b29' : '#c8e6c9'}`
-              }}>
-                <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0 0 8px 0' }}>
-                  <strong>📰 Title:</strong> {result.title || 'Generated RSS Feed'}
-                </p>
-                <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0 0 8px 0' }}>
-                  <strong>📝 Description:</strong> {result.description || 'Auto-generated RSS feed from website content'}
-                </p>
-                <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0' }}>
-                  <strong>📊 Articles Found:</strong> {result.items_count} {result.items_count === 1 ? 'article' : 'articles'}
-                </p>
-              </div>
+              <h3 style={{ color: theme === 'dark' ? '#4caf50' : '#2e7d32' }}>
+                🎉 {result.feeds ? `${result.success} Feed(s) Generated Successfully!` : 'RSS Feed Generated Successfully!'}
+              </h3>
               
-              <div style={{ marginTop: 12 }}>
-                <strong style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20' }}>🔗 Your RSS Feed Link:</strong>
-                <p style={{ 
-                  fontSize: '12px', 
-                  color: theme === 'dark' ? '#b0b0b0' : '#666',
-                  margin: '4px 0 8px 0' 
-                }}>
-                  Copy this link to your RSS reader (Feedly, Inoreader, etc.) or RSS aggregator
-                </p>
-                <div style={{ 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  marginTop: 4 
-                }}>
-                  <input
-                    type="text"
-                    value={`http://127.0.0.1:8895${result.rss_link}`}
-                    readOnly
-                    style={{ 
-                      flex: 1, 
-                      padding: 8, 
-                      marginRight: 8,
-                      fontFamily: 'monospace',
-                      backgroundColor: theme === 'dark' ? '#2d2d2d' : 'white',
-                      color: theme === 'dark' ? '#e0e0e0' : 'black',
-                      border: `1px solid ${theme === 'dark' ? '#555' : '#ccc'}`
-                    }}
-                  />
-                  <button
-                    onClick={() => copyToClipboard(`http://127.0.0.1:8895${result.rss_link}`)}
-                    style={{ 
-                      padding: '8px 12px',
-                      backgroundColor: '#007cba',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: 4,
-                      cursor: 'pointer'
-                    }}
-                  >
-                    Copy
-                  </button>
-                </div>
-              </div>
+              {/* Multiple feeds result */}
+              {result.feeds && (
+                <>
+                  <div style={{ 
+                    backgroundColor: theme === 'dark' ? '#0d2818' : '#f0f8f0',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    marginBottom: '12px',
+                    border: `1px solid ${theme === 'dark' ? '#1e4b29' : '#c8e6c9'}`
+                  }}>
+                    <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: 0 }}>
+                      <strong>📊 Summary:</strong> {result.success} of {result.total} feeds created successfully
+                      {result.failed > 0 && ` (${result.failed} failed)`}
+                    </p>
+                  </div>
+                  
+                  {result.feeds.map((feed, index) => (
+                    <div key={index} style={{ 
+                      backgroundColor: theme === 'dark' ? '#0d2818' : '#f0f8f0',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      marginBottom: '12px',
+                      border: `1px solid ${theme === 'dark' ? '#1e4b29' : '#c8e6c9'}`
+                    }}>
+                      <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0 0 8px 0' }}>
+                        <strong>🌐 URL:</strong> {feed.url}
+                      </p>
+                      <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0 0 8px 0' }}>
+                        <strong>📰 Title:</strong> {feed.title || 'Generated RSS Feed'}
+                      </p>
+                      <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0 0 8px 0' }}>
+                        <strong>📊 Articles:</strong> {feed.items_count} {feed.items_count === 1 ? 'article' : 'articles'}
+                      </p>
+                      
+                      <div style={{ marginTop: 8 }}>
+                        <strong style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', fontSize: 14 }}>🔗 RSS Link:</strong>
+                        <div style={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          marginTop: 4 
+                        }}>
+                          <input
+                            type="text"
+                            value={`http://127.0.0.1:8895${feed.rss_link}`}
+                            readOnly
+                            style={{ 
+                              flex: 1, 
+                              padding: 6, 
+                              marginRight: 8,
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              backgroundColor: theme === 'dark' ? '#2d2d2d' : 'white',
+                              color: theme === 'dark' ? '#e0e0e0' : 'black',
+                              border: `1px solid ${theme === 'dark' ? '#555' : '#ccc'}`
+                            }}
+                          />
+                          <button
+                            onClick={() => copyToClipboard(`http://127.0.0.1:8895${feed.rss_link}`)}
+                            style={{ 
+                              padding: '6px 12px',
+                              fontSize: 12,
+                              backgroundColor: '#007cba',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: 4,
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </>
+              )}
+              
+              {/* Single feed result */}
+              {!result.feeds && (
+                <>
+                  <div style={{ 
+                    backgroundColor: theme === 'dark' ? '#0d2818' : '#f0f8f0',
+                    padding: '12px',
+                    borderRadius: '6px',
+                    marginBottom: '12px',
+                    border: `1px solid ${theme === 'dark' ? '#1e4b29' : '#c8e6c9'}`
+                  }}>
+                    <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0 0 8px 0' }}>
+                      <strong>📰 Title:</strong> {result.title || 'Generated RSS Feed'}
+                    </p>
+                    <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0 0 8px 0' }}>
+                      <strong>📝 Description:</strong> {result.description || 'Auto-generated RSS feed from website content'}
+                    </p>
+                    <p style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20', margin: '0' }}>
+                      <strong>📊 Articles Found:</strong> {result.items_count} {result.items_count === 1 ? 'article' : 'articles'}
+                    </p>
+                  </div>
+                  
+                  <div style={{ marginTop: 12 }}>
+                    <strong style={{ color: theme === 'dark' ? '#e8f5e8' : '#1b5e20' }}>🔗 Your RSS Feed Link:</strong>
+                    <p style={{ 
+                      fontSize: '12px', 
+                      color: theme === 'dark' ? '#b0b0b0' : '#666',
+                      margin: '4px 0 8px 0' 
+                    }}>
+                      Copy this link to your RSS reader (Feedly, Inoreader, etc.) or RSS aggregator
+                    </p>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      marginTop: 4 
+                    }}>
+                      <input
+                        type="text"
+                        value={`http://127.0.0.1:8895${result.rss_link}`}
+                        readOnly
+                        style={{ 
+                          flex: 1, 
+                          padding: 8, 
+                          marginRight: 8,
+                          fontFamily: 'monospace',
+                          backgroundColor: theme === 'dark' ? '#2d2d2d' : 'white',
+                          color: theme === 'dark' ? '#e0e0e0' : 'black',
+                          border: `1px solid ${theme === 'dark' ? '#555' : '#ccc'}`
+                        }}
+                      />
+                      <button
+                        onClick={() => copyToClipboard(`http://127.0.0.1:8895${result.rss_link}`)}
+                        style={{ 
+                          padding: '8px 12px',
+                          backgroundColor: '#007cba',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 4,
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -1486,7 +1618,7 @@ function App() {
               <label>Website URL:</label>
               <input
                 type="url"
-                placeholder="https://www.deeplearning.ai/blog/"
+                placeholder="https://example.com"
                 value={loginSiteUrl}
                 onChange={e => setLoginSiteUrl(e.target.value)}
                 style={getInputStyle()}
@@ -1501,7 +1633,7 @@ function App() {
               <label>Site Name (optional):</label>
               <input
                 type="text"
-                placeholder="DeepLearning.AI Blog"
+                placeholder="My Site"
                 value={loginSiteName}
                 onChange={e => setLoginSiteName(e.target.value)}
                 style={getInputStyle()}

@@ -102,6 +102,37 @@ class DatabaseManager:
         conn.close()
         return feed_id
     
+    def update_feed(self, feed_id, title, description, ai_provider, items, extraction_patterns=None):
+        """
+        Update existing feed without changing feed_id or rss_url
+        Used by Re-Analyze to preserve feed identity
+        """
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Update feed metadata
+        cursor.execute('''
+            UPDATE feeds 
+            SET title = ?, description = ?, ai_provider = ?, extraction_patterns = ?, 
+                last_ai_analysis = ?, updated_at = ?
+            WHERE id = ?
+        ''', (title, description, ai_provider, extraction_patterns, datetime.now(), datetime.now(), feed_id))
+        
+        # Clear old items
+        cursor.execute('DELETE FROM feed_items WHERE feed_id = ?', (feed_id,))
+        
+        # Insert new items
+        for item in items:
+            cursor.execute('''
+                INSERT INTO feed_items (feed_id, title, link, description, pub_date, image)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (feed_id, item.get('title'), item.get('link'), 
+                  item.get('description'), item.get('pubDate'), item.get('image')))
+        
+        conn.commit()
+        conn.close()
+        return feed_id
+    
     def get_all_feeds(self):
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
