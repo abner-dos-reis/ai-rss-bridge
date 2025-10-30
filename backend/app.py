@@ -202,72 +202,87 @@ def extract_structured_content_from_html(soup, url):
     Extract structured content (articles with titles, links, images, dates) from HTML
     Returns formatted string for AI processing
     """
-    # Try to find article elements with common patterns
-    articles = []
-    
-    # Look for article elements
-    articles.extend(soup.find_all(['article']))
-    
-    # Look for divs with article-like classes
-    article_divs = soup.find_all('div', class_=lambda x: x and any(
-        keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item', 'story', 'blog']
-    ))
-    articles.extend(article_divs)
-    
-    # Look for list items that might be articles
-    li_articles = soup.find_all('li', class_=lambda x: x and any(
-        keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item']
-    ))
-    articles.extend(li_articles)
-    
-    print(f"Found {len(articles)} total article elements")
-    
-    # Build structured content
-    structured_content = []
-    base_domain = '/'.join(url.split('/')[:3])  # Get base domain
-    
-    if articles:
-        for i, article in enumerate(articles[:15]):  # Limit to first 15
+    try:
+        # Try to find article elements with common patterns
+        articles = []
+        
+        # Look for article elements
+        articles.extend(soup.find_all(['article']))
+        
+        # Look for divs with article-like classes
+        article_divs = soup.find_all('div', class_=lambda x: x and any(
+            keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item', 'story', 'blog']
+        ))
+        articles.extend(article_divs)
+        
+        # Look for list items that might be articles
+        li_articles = soup.find_all('li', class_=lambda x: x and any(
+            keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item']
+        ))
+        articles.extend(li_articles)
+        
+        print(f"Found {len(articles)} total article elements")
+        
+        # Build structured content
+        structured_content = []
+        base_domain = '/'.join(url.split('/')[:3])  # Get base domain
+        
+        if articles:
+            for i, article in enumerate(articles[:15]):  # Limit to first 15
             # Extract title
-            title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            title = title_elem.get_text().strip() if title_elem else f"Article {i+1}"
+            try:
+                title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                title = title_elem.get_text().strip() if title_elem else f"Article {i+1}"
+            except Exception as e:
+                print(f"  ⚠️ Title extraction error: {e}")
+                title = f"Article {i+1}"
             
             # Extract link
-            link_elem = article.find('a', href=True)
-            link = ""
-            if link_elem:
-                href = link_elem['href']
-                if href.startswith('http'):
-                    link = href
-                elif href.startswith('/'):
-                    link = base_domain + href
-                else:
-                    link = url + '/' + href.lstrip('/')
+            try:
+                link_elem = article.find('a', href=True)
+                link = ""
+                if link_elem:
+                    href = link_elem['href']
+                    if href.startswith('http'):
+                        link = href
+                    elif href.startswith('/'):
+                        link = base_domain + href
+                    else:
+                        link = url + '/' + href.lstrip('/')
+            except Exception as e:
+                print(f"  ⚠️ Link extraction error: {e}")
+                link = ""
             
             # Extract date
-            date_text = ""
-            time_elem = article.find('time', datetime=True)
-            if time_elem:
-                date_text = time_elem.get('datetime', time_elem.get_text().strip())
-                print(f"  📅 Date extraction: Found <time datetime='{date_text}''>")
-            else:
-                date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
-                    keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
-                ))
-                if date_elem:
-                    date_text = date_elem.get_text().strip()
-                    print(f"  📅 Date extraction: Found in {date_elem.name} class='{date_elem.get('class')}': {date_text}")
+            try:
+                date_text = ""
+                time_elem = article.find('time', datetime=True)
+                if time_elem:
+                    date_text = time_elem.get('datetime', time_elem.get_text().strip())
+                    print(f"  📅 Date extraction: Found <time datetime='{date_text}''>")
                 else:
-                    print(f"  ⚠️ Date extraction: NO DATE FOUND in article")
+                    date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
+                        keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
+                    ))
+                    if date_elem:
+                        date_text = date_elem.get_text().strip()
+                        print(f"  📅 Date extraction: Found in {date_elem.name} class='{date_elem.get('class')}': {date_text}")
+                    else:
+                        print(f"  ⚠️ Date extraction: NO DATE FOUND in article")
+            except Exception as e:
+                print(f"  ⚠️ Date extraction error: {e}")
+                date_text = ""
             
             print(f"Found article {i+1}: {title[:50]}... | Date: {date_text}")
 
             
             # Extract image with comprehensive strategy
-            img_elem = None
-            img_candidates = []
-            
-            print(f"  🔍 Starting image extraction for article {i+1}...")
+            image = ""
+            try:
+                img_elem = None
+                img_candidates = []
+                
+                print(f"  🔍 Starting image extraction for article {i+1}...")
             
             # Strategy 1: og:image meta tag (ONLY if this is the first article, otherwise skip)
             # For subsequent articles, og:image is usually the site logo/profile pic
@@ -416,8 +431,16 @@ def extract_structured_content_from_html(soup, url):
             else:
                 print(f"  ❌ NO IMAGE FOUND for article {i+1}")
             
+            except Exception as e:
+                print(f"  ⚠️ Image extraction ERROR: {type(e).__name__}: {str(e)}")
+                image = ""
+            
             # Get content preview
-            content = article.get_text().strip()[:400]  # First 400 chars
+            try:
+                content = article.get_text().strip()[:400]  # First 400 chars
+            except Exception as e:
+                print(f"  ⚠️ Content extraction error: {e}")
+                content = ""
             
             if title and len(title) > 3:  # Only include if we have a meaningful title
                 structured_content.append(f"""
@@ -429,17 +452,29 @@ IMAGE: {image}
 CONTENT: {content}
 ---""")
     
-    if structured_content:
-        return "\n".join(structured_content)
-    else:
-        # Fallback to main content
-        main_content = soup.find(['main', 'div'], class_=lambda x: x and any(
-            keyword in x.lower() for keyword in ['content', 'main', 'body', 'wrapper']
-        ))
-        if main_content:
-            return main_content.get_text()
+        if structured_content:
+            return "\n".join(structured_content)
         else:
+            # Fallback to main content
+            main_content = soup.find(['main', 'div'], class_=lambda x: x and any(
+                keyword in x.lower() for keyword in ['content', 'main', 'body', 'wrapper']
+            ))
+            if main_content:
+                return main_content.get_text()
+            else:
+                return soup.get_text()
+    
+    except Exception as e:
+        # If ANY exception occurs during extraction, log it and return basic text
+        print(f"⚠️ ERROR in extract_structured_content_from_html: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return safe fallback - just the basic page text
+        try:
             return soup.get_text()
+        except:
+            return "Error extracting content. Please check the URL."
 
 @app.route('/api/diagnostics', methods=['GET'])
 def diagnostics():
