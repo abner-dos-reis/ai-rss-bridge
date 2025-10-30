@@ -135,7 +135,11 @@ class DatabaseManager:
         cursor.execute('''
             SELECT title, link, description, pub_date, image
             FROM feed_items WHERE feed_id = ?
-            ORDER BY created_at DESC
+            ORDER BY 
+                CASE 
+                    WHEN pub_date IS NOT NULL AND pub_date != '' THEN pub_date
+                    ELSE created_at
+                END DESC
         ''', (feed_id,))
         
         items = []

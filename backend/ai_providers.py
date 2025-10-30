@@ -35,9 +35,12 @@ class OpenAIProvider(AIProvider):
         - link: Full URL to the article
         - description: Detailed summary in 100-200 words explaining what the article is about, key points, and why it's interesting
         - image: URL of main article image (if available)
-        - pubDate: Publication date in YYYY-MM-DD format
+        - pubDate: Publication date in YYYY-MM-DD format (REQUIRED - extract from article date, use current date if not found)
         
-        Focus on extracting actual content, not navigation or ads.
+        IMPORTANT: 
+        1. Sort articles by pubDate DESC (newest first)
+        2. Focus on RECENT articles from 2024-2025
+        3. Extract actual content, not navigation or ads
         """
         
         headers = {
@@ -101,10 +104,11 @@ class GeminiProvider(AIProvider):
         INSTRUCTIONS:
         1. Look for MULTIPLE different articles/posts/news items on this page
         2. Each item should have a unique title and detailed description (100-200 words)
-        3. Try to extract actual publication dates if visible
+        3. EXTRACT ACTUAL PUBLICATION DATES - this is CRITICAL (use current date as fallback)
         4. Create specific URLs for each article (combine base URL with article paths)
         5. Extract main image URLs for each article
-        6. Focus on finding at least 3-10 different content pieces
+        6. Focus on RECENT articles from 2024-2025
+        7. SORT articles by date DESC (newest first)
 
         For a blog/news site like this, look for:
         - Article headlines
@@ -217,7 +221,12 @@ class ClaudeProvider(AIProvider):
         - link: Full URL to the article
         - description: Detailed summary in 100-200 words
         - image: URL of main article image (if available)
-        - pubDate: Publication date in YYYY-MM-DD format
+        - pubDate: Publication date in YYYY-MM-DD format (REQUIRED - extract from article date, use current date if not found)
+        
+        IMPORTANT: 
+        1. Sort articles by pubDate DESC (newest first)
+        2. Focus on RECENT articles from 2024-2025
+        3. Extract actual content, not navigation or ads
         """
         
         headers = {
@@ -276,7 +285,12 @@ class PerplexityProvider(AIProvider):
         - link: Full URL to the article
         - description: Detailed summary in 100-200 words
         - image: URL of main article image (if available)
-        - pubDate: Publication date in YYYY-MM-DD format
+        - pubDate: Publication date in YYYY-MM-DD format (REQUIRED - extract from article date, use current date if not found)
+        
+        IMPORTANT: 
+        1. Sort articles by pubDate DESC (newest first)
+        2. Focus on RECENT articles from 2024-2025
+        3. Extract actual content, not navigation or ads
         """
         
         headers = {
