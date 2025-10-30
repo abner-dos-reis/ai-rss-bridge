@@ -573,10 +573,16 @@ CONTENT: {content}
             print("Using provided API key")
             provider = get_ai_provider(ai_provider, api_key)
             ai_result = provider.extract_content(url, html_content)
+            print(f"⚠️ CHECKPOINT 1: After extract_content, type = {type(ai_result)}")
+            if isinstance(ai_result, tuple):
+                print(f"⚠️ CHECKPOINT 1: It's a TUPLE! Content: {ai_result}")
             api_key_used = api_key
         else:
             print("Using saved API keys with fallback")
             ai_result, api_key_used = try_ai_with_fallback(ai_provider, url, html_content)
+            print(f"⚠️ CHECKPOINT 2: After try_ai_with_fallback, type = {type(ai_result)}")
+            if isinstance(ai_result, tuple):
+                print(f"⚠️ CHECKPOINT 2: It's a TUPLE! Content: {ai_result}")
         
         print(f"AI result received: {type(ai_result)}")
         
@@ -656,6 +662,22 @@ CONTENT: {content}
     except requests.RequestException as e:
         print(f"Request error: {e}")
         return jsonify({"error": f"Failed to fetch website: {str(e)}"}), 400
+    except AttributeError as e:
+        print(f"❌ ATTRIBUTE ERROR in generate_rss: {str(e)}")
+        import traceback
+        print("Full traceback:")
+        traceback.print_exc()
+        
+        # This is the tuple error - let's provide detailed info
+        error_msg = f"Internal error: {str(e)}"
+        if "'tuple' object has no attribute" in str(e):
+            error_msg = "Internal error: AI provider returned invalid format (tuple instead of dict). This is a bug."
+        
+        return jsonify({
+            "error": error_msg,
+            "type": "AttributeError",
+            "details": "Please report this error with the URL you tried to convert"
+        }), 500
     except Exception as e:
         print(f"Unexpected error in generate_rss: {type(e).__name__}: {str(e)}")
         import traceback
