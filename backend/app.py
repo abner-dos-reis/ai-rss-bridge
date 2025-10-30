@@ -235,14 +235,19 @@ def extract_structured_content_from_html(soup, url):
             time_elem = article.find('time', datetime=True)
             if time_elem:
                 date_text = time_elem.get('datetime', time_elem.get_text().strip())
+                print(f"  📅 Date extraction: Found <time datetime='{date_text}''>")
             else:
                 date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
                     keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
                 ))
                 if date_elem:
                     date_text = date_elem.get_text().strip()
+                    print(f"  📅 Date extraction: Found in {date_elem.name} class='{date_elem.get('class')}': {date_text}")
+                else:
+                    print(f"  ⚠️ Date extraction: NO DATE FOUND in article")
             
-            print(f"Found article: {title[:50]}... | Date: {date_text}")
+            print(f"Found article {i+1}: {title[:50]}... | Date: {date_text}")
+
             
             # Extract image with comprehensive strategy
             img_elem = None
