@@ -572,6 +572,15 @@ CONTENT: {content}
         
         print(f"AI result received: {type(ai_result)}")
         
+        # Safety check: ensure ai_result is a dict
+        if isinstance(ai_result, tuple):
+            print(f"WARNING: ai_result is tuple, extracting first element")
+            ai_result = ai_result[0] if ai_result else {"error": "Invalid result format"}
+        
+        if not isinstance(ai_result, dict):
+            print(f"ERROR: ai_result is not a dict: {type(ai_result)}")
+            return jsonify({"error": f"Invalid AI response format: {type(ai_result).__name__}"}), 500
+        
         if "error" in ai_result:
             print(f"AI error: {ai_result['error']}")
             return jsonify({"error": ai_result["error"]}), 500
@@ -878,6 +887,13 @@ def reanalyze_feed(feed_id):
             ai_result = provider.extract_content(feed_info['url'], html_content)
         else:
             ai_result, _ = try_ai_with_fallback(ai_provider, feed_info['url'], html_content)
+        
+        # Safety check: ensure ai_result is a dict
+        if isinstance(ai_result, tuple):
+            ai_result = ai_result[0] if ai_result else {"error": "Invalid result format"}
+        
+        if not isinstance(ai_result, dict):
+            return jsonify({"error": f"Invalid AI response format: {type(ai_result).__name__}"}), 500
         
         if "error" in ai_result:
             return jsonify({"error": ai_result["error"]}), 500
