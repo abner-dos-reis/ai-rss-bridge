@@ -10,6 +10,7 @@ A powerful, intelligent RSS feed generator that uses AI to extract structured co
 
 ### 🧠 **Intelligent Content Extraction**
 - **Multi-AI Support**: OpenAI GPT, Google Gemini, Claude, and Perplexity AI
+- **Multi-Key Fallback**: Add multiple API keys per provider with automatic fallback
 - **Smart Pattern Learning**: AI analyzes websites once and saves extraction patterns
 - **Zero-Token Updates**: Auto updates use saved patterns without consuming API credits
 - **Fallback Recovery**: Automatically uses AI if website structure changes
@@ -19,18 +20,29 @@ A powerful, intelligent RSS feed generator that uses AI to extract structured co
 - **Auto-Update Scheduler**: Hourly automatic updates for all feeds
 - **Manual Re-analysis**: Force AI re-analysis when sites change structure
 - **Pattern Persistence**: Extraction patterns saved for efficient future updates
+- **Content Caching**: 6-24 hour cache to avoid rate limiting and improve speed
+
+### 🔐 **Login & Protected Content**
+- **Login Sessions**: Save login cookies to access protected content
+- **Cookie Management**: Easy-to-use interface for managing site sessions
+- **Auto-Detection**: System automatically uses saved sessions for authenticated sites
+- **Session Persistence**: Login sessions saved in database and reused
 
 ### 🎨 **Modern Web Interface**
 - **Beautiful UI**: Clean, responsive design with dark/light themes
+- **Persistent Theme**: Theme preference saved without flash on reload
 - **Card-Based Display**: Visual article cards with images and descriptions
 - **Feed Management**: Easy feed creation, updating, and deletion
-- **API Key Manager**: Secure encrypted storage of AI provider keys
+- **Multi-Key Manager**: Add/remove multiple API keys per provider with visual interface
+- **Session Manager**: Open, manage, and delete login sessions
 
 ### 🔧 **Technical Excellence**
-- **Docker Ready**: Complete containerized deployment
+- **Docker Ready**: Complete containerized deployment with Cloudscraper
 - **RESTful API**: Comprehensive API for all operations
 - **Image Extraction**: Intelligent image detection and URL resolution
+- **Anti-Bot Bypass**: 9 different fetch strategies including Cloudscraper
 - **Error Recovery**: Robust error handling and logging
+- **Duplicate Prevention**: Prevents adding the same API key to multiple providers
 
 ## 📸 Screenshots
 
@@ -70,17 +82,67 @@ docker compose up --build -d
 1. **Configure API Keys**
    - Go to the "⚙️ Config" tab
    - Add your AI provider API key (encrypted storage)
+   - **NEW**: Add multiple keys per provider for automatic fallback
+   - Click "Manage" to view, add, or remove keys
    - Keys are saved securely for future use
 
-2. **Generate Your First RSS Feed**
+2. **Optional: Add Login Sessions** (for protected content)
+   - Go to "🔐 Login Sessions" tab
+   - Enter website URL (e.g., LinkedIn, Medium)
+   - Click "Open Website to Login" - log in on their site
+   - Come back and click "Save Session"
+   - Or use "Advanced" to paste cookies manually from DevTools
+
+3. **Generate Your First RSS Feed**
    - Go to "Generate RSS" tab
    - Enter any website URL
    - Select your AI provider
    - Click "Generate RSS Feed"
+   - System automatically uses saved login if available
 
-3. **Copy RSS Link**
+4. **Copy RSS Link**
    - Use the generated RSS URL in your favorite RSS reader
    - Links work with Feedly, Inoreader, or any RSS client
+   - Updates automatically every hour (configurable)
+
+## 🔥 What's New in v2.0
+
+### 🔑 Multi-Key Fallback System
+Never worry about rate limits again! Add multiple API keys per provider:
+- **Add unlimited keys**: Each provider can have multiple API keys
+- **Automatic failover**: If one key fails, system tries the next
+- **Visual management**: See all your keys (masked) and manage them easily
+- **Smart rotation**: Distributes load across keys
+
+**Example Use Case**: Add 3 Gemini keys → System automatically rotates between them → 3x the rate limit!
+
+### 🔐 Login Sessions for Protected Content
+Access LinkedIn, Medium, Substack, and other sites requiring login:
+- **Simple workflow**: Click "Login" → Log in on site → Save session
+- **Cookie capture**: Automatic or manual cookie import from DevTools
+- **Persistent sessions**: Saved in database, reused automatically
+- **Visual indicator**: See which sites you're logged into
+
+**Example Use Case**: Save LinkedIn session → Generate feed from your home feed → Get personalized content updates!
+
+### 💾 Smart Content Caching
+Reduce API costs and avoid rate limiting:
+- **6-24 hour cache**: Content cached based on URL
+- **Automatic invalidation**: Cache expires automatically
+- **Faster generation**: Cached content loads instantly
+- **Cost savings**: Significantly reduces AI API calls
+
+**Example**: First generation uses AI → Next 24 hours use cache → Zero additional API cost!
+
+### 🛡️ Advanced Anti-Bot Protection
+Access even the most protected websites:
+- **9 fetch strategies**: Multiple approaches to bypass protection
+- **Cloudscraper integration**: Handles Cloudflare and similar protections
+- **Browser rotation**: Tries Chrome, Firefox, Safari user agents
+- **Smart delays**: Adds delays to avoid detection
+- **Auto RSS detection**: Finds native RSS feeds automatically
+
+**Example**: DeepLearning.AI blocks normal scrapers → Our system tries 9 different methods → Success!
 
 ## 🧠 How the Smart System Works
 
@@ -116,18 +178,28 @@ This revolutionary approach means:
 **Feed Management:**
 ```http
 GET  /api/info                    # API information
-POST /api/generate                # Generate new RSS feed
+POST /api/generate                # Generate new RSS feed (uses cache if available)
 GET  /api/feeds                   # List all feeds
 GET  /api/rss/{feed_id}          # Access RSS XML
 POST /api/update/{feed_id}       # Smart update (no AI)
 POST /api/reanalyze/{feed_id}    # Re-analyze with AI
+DELETE /api/feeds/{feed_id}      # Delete specific feed
+DELETE /api/feeds/all            # Delete all feeds
 ```
 
-**Configuration:**
+**Configuration (Multi-Key Support):**
 ```http
-GET    /api/config/api-keys       # List saved providers
-POST   /api/config/api-keys       # Save API key (encrypted)
-DELETE /api/config/api-keys/{provider}  # Remove API key
+GET    /api/config/saved-providers         # List providers with key counts
+GET    /api/config/api-keys/{provider}/all # Get all keys for provider (masked)
+POST   /api/config/api-keys                # Save API key (encrypted, prevents duplicates)
+DELETE /api/config/api-keys/{provider}     # Remove specific API key
+```
+
+**Login Sessions (NEW):**
+```http
+GET    /api/sessions               # List all saved login sessions
+POST   /api/sessions               # Save new login session with cookies
+DELETE /api/sessions/{site_url}    # Delete login session
 ```
 
 **Scheduler:**
@@ -135,6 +207,13 @@ DELETE /api/config/api-keys/{provider}  # Remove API key
 GET  /api/scheduler/status        # Get auto-update status
 POST /api/scheduler/start         # Start auto-updates
 POST /api/scheduler/stop          # Stop auto-updates
+```
+
+**Content Cache (NEW):**
+```http
+# Automatic - no manual endpoints
+# Content cached for 6-24 hours based on URL
+# Reduces API calls and avoids rate limiting
 ```
 
 ### Example Usage
@@ -183,26 +262,34 @@ Feed Reader ← Auto Updates ← Smart Scraper ← Saved Patterns
 ### ✅ Fully Working Features
 - ✅ RSS feed generation from any website
 - ✅ Multi-AI provider support (OpenAI, Gemini, Claude, Perplexity)
+- ✅ **Multi-key fallback system** - Add multiple API keys per provider
+- ✅ **Login session management** - Access protected content with saved cookies
+- ✅ **Content caching** - 6-24h cache to avoid rate limiting
+- ✅ **Anti-bot bypass** - 9 different fetch strategies including Cloudscraper
 - ✅ Smart pattern learning and storage
 - ✅ Manual feed updates and re-analysis
-- ✅ Secure API key management
+- ✅ Secure API key management with duplicate prevention
 - ✅ Image extraction and URL resolution
-- ✅ Dark/light theme support
-- ✅ Docker deployment
+- ✅ **Persistent dark/light theme** - No flash on reload
+- ✅ Docker deployment with Cloudscraper support
+- ✅ **Bulk feed deletion** - Delete all feeds at once
+- ✅ Auto-update scheduler with hourly updates
 
-### 🧪 Beta Features (Testing Required)
-- ⚠️ **Auto-Update Scheduler**: Needs extensive testing with various website types
-- ⚠️ **Image Extraction**: Works well but not all websites have optimal image support
-- ⚠️ **Pattern Recognition**: May need manual re-analysis for complex site changes
+### 🎯 Recently Added (v2.0)
+- ✨ **Multi-Key System**: Add unlimited API keys per provider with automatic fallback
+- 🔐 **Login Sessions**: Save cookies to access LinkedIn, Medium, and other protected sites
+- 💾 **Content Cache**: Smart caching reduces API costs and improves speed
+- �️ **Advanced Anti-Bot**: Cloudscraper + 9 strategies to bypass protection
+- 🎨 **Better UX**: Persistent theme, open session URLs, advanced cookie input
+- 🔒 **Security**: Prevents duplicate API keys across providers
 
 ### 🔮 Future Enhancements
-- 🔐 **Authentication system for protected content access**
-- � **Universal content aggregation (LinkedIn, forums, groups)**
-- �🌍 **Multi-language Support**: Generate feeds in different languages using AI translation
+- 🌍 **Multi-language Support**: Generate feeds in different languages using AI translation
 - 📊 **Analytics Dashboard**: Feed performance and update statistics
 - 🔄 **Webhook Support**: Real-time notifications for feed updates
 - 🎯 **Custom Patterns**: User-defined extraction rules
 - 📱 **Mobile App**: Native mobile application
+- 🔌 **Browser Extension**: One-click RSS generation from any page
 
 For now you can use [IMAP2RSS integration for email newsletters](https://github.com/abner-dos-reis/Imap2RSS)
 
@@ -213,17 +300,25 @@ For now you can use [IMAP2RSS integration for email newsletters](https://github.
 ### Project Structure
 ```
 ai-rss-bridge/
-├── backend/               # Flask API server
-│   ├── ai_providers.py   # AI integration modules
-│   ├── smart_scraper.py  # Pattern-based scraping
-│   ├── database.py       # SQLite database manager
-│   ├── rss_generator.py  # RSS XML generation
-│   └── scheduler.py      # Auto-update system
-├── frontend/             # React web interface
-│   ├── src/App.js       # Main application component
-│   └── public/          # Static assets
-├── data/                # Persistent data storage
-└── docker-compose.yml   # Container orchestration
+├── backend/                    # Flask API server
+│   ├── ai_providers.py        # AI integration modules (multi-key support)
+│   ├── smart_scraper.py       # Pattern-based scraping
+│   ├── database.py            # SQLite (feeds, cache, sessions)
+│   ├── config_manager.py      # Encrypted multi-key management
+│   ├── rss_generator.py       # RSS XML generation
+│   ├── scheduler.py           # Auto-update system
+│   └── requirements.txt       # Includes cloudscraper
+├── frontend/                   # React web interface
+│   ├── src/
+│   │   ├── App.js            # Main app with all tabs
+│   │   ├── ApiKeyInput.js    # Key configuration
+│   │   └── ManageApiKeys.js  # Multi-key manager (NEW)
+│   └── public/               # Static assets
+├── data/                      # Persistent data storage
+│   ├── feeds.db              # Main database
+│   ├── config.json           # Encrypted API keys
+│   └── encryption.key        # Encryption key
+└── docker-compose.yml        # Container orchestration
 ```
 
 ### Local Development
@@ -250,12 +345,45 @@ FRONTEND_PORT=8895
 FLASK_ENV=development
 ```
 
-## 🔒 Security
+## � Pro Tips & Best Practices
+
+### Multi-Key Strategy
+- Add 2-3 keys per provider for redundancy
+- Use different providers for different sites (Gemini for blogs, GPT for complex sites)
+- Monitor which keys are being used in logs
+
+### Login Sessions
+- Save sessions for sites you visit frequently
+- Re-save sessions if you see "Logged Out" status
+- Use browser DevTools (F12 → Application → Cookies) for manual cookie export
+
+### Dealing with 403 Errors
+1. Check if site has official RSS feed
+2. Add login session if site requires authentication
+3. Try individual article URLs instead of homepage
+4. Use "Update Feed" button to retry with cache
+
+### Optimizing Costs
+- Let cache work for 24h before regenerating
+- Use "Update Feed" (smart scraper) instead of "Re-analyze" when possible
+- Add multiple keys to distribute load and avoid rate limits
+
+### Best Sites to Convert
+- ✅ **Blogs & News**: Medium, Substack, WordPress sites
+- ✅ **Tech Sites**: GitHub, Stack Overflow, Dev.to
+- ✅ **Social**: LinkedIn newsletters, Twitter threads (with session)
+- ✅ **Documentation**: API docs, changelogs, release notes
+- ⚠️ **Heavy JS sites**: May need multiple attempts
+- ❌ **Video platforms**: YouTube, TikTok (use official RSS if available)
+
+## �🔒 Security
 
 - **Encrypted Storage**: All API keys stored with Fernet encryption
+- **Cookie Security**: Login cookies encrypted and stored locally
 - **No Data Leaks**: No API keys or personal data in logs
 - **Local Processing**: All data processed locally, no external data sharing
 - **Secure Defaults**: CORS protection and input validation
+- **Duplicate Prevention**: System prevents adding same key to multiple providers
 
 ## 📋 Requirements
 
