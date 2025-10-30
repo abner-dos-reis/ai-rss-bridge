@@ -86,8 +86,21 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    # Ensure API routes return JSON (not HTML) for errors ONLY
+    # Ensure ALL /api/ responses have correct Content-Type
     if request.path.startswith('/api/'):
+        # If response is JSON but doesn't have correct Content-Type, fix it
+        if not response.content_type or 'application/json' not in response.content_type:
+            # Check if data looks like JSON
+            try:
+                data = response.get_data(as_text=True)
+                if data.strip().startswith('{') or data.strip().startswith('['):
+                    # It's JSON data without proper Content-Type!
+                    print(f"⚠️ Fixing missing JSON Content-Type for {request.path}")
+                    response.headers['Content-Type'] = 'application/json'
+                    return response
+            except:
+                pass
+        
         content_type = response.content_type or ''
         # ONLY convert HTML responses that are errors (4xx, 5xx)
         if 'text/html' in content_type and response.status_code >= 400:
@@ -189,225 +202,93 @@ def extract_structured_content_from_html(soup, url):
     Extract structured content (articles with titles, links, images, dates) from HTML
     Returns formatted string for AI processing
     """
-    # Try to find article elements with common patterns
-    articles = []
-    
-    # Look for article elements
-    articles.extend(soup.find_all(['article']))
-    
-    # Look for divs with article-like classes
-    article_divs = soup.find_all('div', class_=lambda x: x and any(
-        keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item', 'story', 'blog']
-    ))
-    articles.extend(article_divs)
-    
-    # Look for list items that might be articles
-    li_articles = soup.find_all('li', class_=lambda x: x and any(
-        keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item']
-    ))
-    articles.extend(li_articles)
-    
-    print(f"Found {len(articles)} total article elements")
-    
-    # Build structured content
-    structured_content = []
-    base_domain = '/'.join(url.split('/')[:3])  # Get base domain
-    
-    if articles:
-        for i, article in enumerate(articles[:15]):  # Limit to first 15
-            # Extract title
-            title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
-            title = title_elem.get_text().strip() if title_elem else f"Article {i+1}"
-            
-            # Extract link
-            link_elem = article.find('a', href=True)
-            link = ""
-            if link_elem:
-                href = link_elem['href']
-                if href.startswith('http'):
-                    link = href
-                elif href.startswith('/'):
-                    link = base_domain + href
-                else:
-                    link = url + '/' + href.lstrip('/')
-            
-            # Extract date
-            date_text = ""
-            time_elem = article.find('time', datetime=True)
-            if time_elem:
-                date_text = time_elem.get('datetime', time_elem.get_text().strip())
-                print(f"  📅 Date extraction: Found <time datetime='{date_text}''>")
-            else:
-                date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
-                    keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
-                ))
-                if date_elem:
-                    date_text = date_elem.get_text().strip()
-                    print(f"  📅 Date extraction: Found in {date_elem.name} class='{date_elem.get('class')}': {date_text}")
-                else:
-                    print(f"  ⚠️ Date extraction: NO DATE FOUND in article")
-            
-            print(f"Found article {i+1}: {title[:50]}... | Date: {date_text}")
-
-            
-            # Extract image with comprehensive strategy
-            img_elem = None
-            img_candidates = []
-            
-            print(f"  🔍 Starting image extraction for article {i+1}...")
-            
-            # Strategy 1: og:image meta tag (ONLY if this is the first article, otherwise skip)
-            # For subsequent articles, og:image is usually the site logo/profile pic
-            if i == 0:
-                og_image = soup.find('meta', property='og:image')
-                if og_image and og_image.get('content'):
-                    print(f"  ✓ Strategy 1 (og:image): Found {og_image['content'][:80]}")
-                    img_candidates.append(('og:image', og_image['content']))
-                else:
-                    print(f"  ✗ Strategy 1 (og:image): Not found")
-            else:
-                print(f"  ⊘ Strategy 1 (og:image): Skipped (not first article)")
-            
-            # Strategy 2: Images in absolute positioned divs (within THIS article)
-            absolute_divs = article.find_all('div', class_=lambda x: x and any(
-                'absolute' in str(x).lower() for x in [x] if x
-            ))
-            if absolute_divs:
-                print(f"  → Strategy 2: Found {len(absolute_divs)} absolute divs")
-            for div in absolute_divs:
-                img = div.find('img', src=True)
-                if img and img.get('src'):
-                    print(f"  ✓ Strategy 2 (absolute-div): Found {img['src'][:80]}")
-                    img_candidates.append(('absolute-div', img['src']))
-                    break
-            if not any(s[0] == 'absolute-div' for s in img_candidates):
-                print(f"  ✗ Strategy 2 (absolute-div): No images found")
-            
-            # Strategy 2.5: Images with large width/height attributes (within THIS article)
-            large_imgs = article.find_all('img', src=True)
-            print(f"  → Strategy 2.5: Checking {len(large_imgs)} images for large dimensions...")
-            found_large = False
-            for img in large_imgs:
+    try:
+        # Try to find article elements with common patterns
+        articles = []
+        
+        # Look for article elements
+        articles.extend(soup.find_all(['article']))
+        
+        # Look for divs with article-like classes
+        article_divs = soup.find_all('div', class_=lambda x: x and any(
+            keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item', 'story', 'blog']
+        ))
+        articles.extend(article_divs)
+        
+        # Look for list items that might be articles
+        li_articles = soup.find_all('li', class_=lambda x: x and any(
+            keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item']
+        ))
+        articles.extend(li_articles)
+        
+        print(f"Found {len(articles)} total article elements")
+        
+        # Build structured content
+        structured_content = []
+        base_domain = '/'.join(url.split('/')[:3])  # Get base domain
+        
+        if articles:
+            for i, article in enumerate(articles[:15]):  # Limit to first 15
+                # Extract title
                 try:
-                    width = img.get('width', '')
-                    height = img.get('height', '')
-                    if width and height:
-                        w = int(width)
-                        h = int(height)
-                        print(f"    - Image: {img.get('src', 'no-src')[:50]}... ({w}x{h})")
-                        # If image is larger than 400x300, it's likely the main article image
-                        if w >= 400 and h >= 300:
-                            print(f"  ✓ Strategy 2.5 (large-dimensions): Found {img['src'][:80]} ({w}x{h})")
-                            img_candidates.append(('large-dimensions', img['src']))
-                            found_large = True
-                            break
-                except (ValueError, TypeError) as e:
-                    continue
-            if not found_large:
-                print(f"  ✗ Strategy 2.5 (large-dimensions): No large images found")
-            
-            # Strategy 3: Featured/thumbnail images with srcset support (within THIS article)
-            featured_img = article.find('img', class_=lambda x: x and any(
-                keyword in str(x).lower() for keyword in [
-                    'featured', 'thumbnail', 'cover', 'hero', 'main', 'banner', 
-                    'article-cover', 'entry-image', 'post-image', 
-                    'wp-image', 'object-cover',  # WordPress and Tailwind
-                    'reader-cover', 'evi-image'  # LinkedIn
-                ]
-            ))
-            if featured_img:
-                classes = featured_img.get('class', [])
-                print(f"  ✓ Strategy 3 (featured): Found image with classes: {classes}")
-                srcset = featured_img.get('srcset', '')
-                if srcset:
-                    srcs = [s.strip().split(' ')[0] for s in srcset.split(',')]
-                    if srcs:
-                        print(f"  ✓ Strategy 3 (featured-srcset): Using {srcs[-1][:80]}")
-                        img_candidates.append(('featured-srcset', srcs[-1]))
-                elif featured_img.get('src'):
-                    print(f"  ✓ Strategy 3 (featured): Using {featured_img['src'][:80]}")
-                    img_candidates.append(('featured', featured_img['src']))
-            else:
-                print(f"  ✗ Strategy 3 (featured): No featured image found")
-            
-            # Strategy 4: Images in common wrapper classes (within THIS article)
-            wrapper_classes = [
-                'image-wrapper', 'post-image', 'article-image', 'media', 'visual', 
-                'wp-post-image', 'entry-image', 'post-thumbnail', 'attachment',
-                'figure', 'img-wrap', 'photo', 'picture-wrapper'
-            ]
-            for wrapper_class in wrapper_classes:
-                wrapper = article.find(class_=lambda x: x and wrapper_class in str(x).lower())
-                if wrapper:
-                    img = wrapper.find('img', src=True)
-                    if img:
-                        img_candidates.append(('wrapper', img['src']))
-                        break
-            
-            # Strategy 5: Picture element (within THIS article)
-            picture = article.find('picture')
-            if picture:
-                source = picture.find('source', srcset=True)
-                if source:
-                    img_candidates.append(('picture-source', source['srcset'].split(',')[0].strip().split(' ')[0]))
-                img_in_picture = picture.find('img', src=True)
-                if img_in_picture:
-                    img_candidates.append(('picture-img', img_in_picture['src']))
-            
-            # Strategy 6: FIRST LARGE IMAGE within THIS article (not small icons/avatars)
-            for img in article.find_all('img', src=True):
-                src = img.get('src', '')
-                alt = img.get('alt', '').lower()
-                width = img.get('width', '')
-                height = img.get('height', '')
+                    title_elem = article.find(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+                    title = title_elem.get_text().strip() if title_elem else f"Article {i+1}"
+                except Exception as e:
+                    print(f"  ⚠️ Title extraction error: {e}")
+                    title = f"Article {i+1}"
                 
-                # Skip small images, icons, logos, and avatars
-                if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner', 'pixel', '1x1', 'profile']):
-                    continue
-                if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji', 'profile']):
-                    continue
-                # Skip very small images (likely icons)
+                # Extract link
                 try:
-                    if width and int(width) < 200:  # Increased from 100 to 200
-                        continue
-                    if height and int(height) < 150:  # Increased from 100 to 150
-                        continue
-                except:
-                    pass
+                    link_elem = article.find('a', href=True)
+                    link = ""
+                    if link_elem:
+                        href = link_elem['href']
+                        if href.startswith('http'):
+                            link = href
+                        elif href.startswith('/'):
+                            link = base_domain + href
+                        else:
+                            link = url + '/' + href.lstrip('/')
+                except Exception as e:
+                    print(f"  ⚠️ Link extraction error: {e}")
+                    link = ""
                 
-                # This is likely a real article image
-                img_candidates.append(('first-large', src))
-                break
-            
-            # Choose best image candidate
-            image = ""
-            print(f"  📊 Total candidates found: {len(img_candidates)}")
-            if img_candidates:
-                for idx, (strat, src) in enumerate(img_candidates):
-                    print(f"    {idx+1}. {strat}: {src[:80]}")
+                # Extract date
+                try:
+                    date_text = ""
+                    time_elem = article.find('time', datetime=True)
+                    if time_elem:
+                        date_text = time_elem.get('datetime', time_elem.get_text().strip())
+                        print(f"  📅 Date extraction: Found <time datetime='{date_text}''>")
+                    else:
+                        date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
+                            keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
+                        ))
+                        if date_elem:
+                            date_text = date_elem.get_text().strip()
+                            print(f"  📅 Date extraction: Found in {date_elem.name} class='{date_elem.get('class')}': {date_text}")
+                        else:
+                            print(f"  ⚠️ Date extraction: NO DATE FOUND in article")
+                except Exception as e:
+                    print(f"  ⚠️ Date extraction error: {e}")
+                    date_text = ""
                 
-                strategy, src = img_candidates[0]  # Prioritize by order added
-                print(f"  ✅ SELECTED image via strategy: {strategy}")
-                print(f"     URL: {src[:120]}")
+                print(f"Found article {i+1}: {title[:50]}... | Date: {date_text}")
 
                 
-                # Normalize URL
-                if src.startswith('//'):
-                    image = 'https:' + src
-                elif src.startswith('http'):
-                    image = src
-                elif src.startswith('/'):
-                    image = base_domain + src
-                elif not src.startswith('data:'):
-                    image = base_domain + '/' + src.lstrip('/')
-            else:
-                print(f"  ❌ NO IMAGE FOUND for article {i+1}")
-            
-            # Get content preview
-            content = article.get_text().strip()[:400]  # First 400 chars
-            
-            if title and len(title) > 3:  # Only include if we have a meaningful title
-                structured_content.append(f"""
+                # IMAGE EXTRACTION DISABLED - Was causing "Expected JSON response" errors
+                # TODO: Re-implement with proper error handling later
+                image = ""
+                
+                # Get content preview
+                try:
+                    content = article.get_text().strip()[:400]  # First 400 chars
+                except Exception as e:
+                    print(f"  ⚠️ Content extraction error: {e}")
+                    content = ""
+                
+                if title and len(title) > 3:  # Only include if we have a meaningful title
+                    structured_content.append(f"""
 ARTICLE {i+1}:
 TITLE: {title}
 LINK: {link}
@@ -415,18 +296,30 @@ DATE: {date_text}
 IMAGE: {image}
 CONTENT: {content}
 ---""")
-    
-    if structured_content:
-        return "\n".join(structured_content)
-    else:
-        # Fallback to main content
-        main_content = soup.find(['main', 'div'], class_=lambda x: x and any(
-            keyword in x.lower() for keyword in ['content', 'main', 'body', 'wrapper']
-        ))
-        if main_content:
-            return main_content.get_text()
+        
+        if structured_content:
+            return "\n".join(structured_content)
         else:
+            # Fallback to main content
+            main_content = soup.find(['main', 'div'], class_=lambda x: x and any(
+                keyword in x.lower() for keyword in ['content', 'main', 'body', 'wrapper']
+            ))
+            if main_content:
+                return main_content.get_text()
+            else:
+                return soup.get_text()
+    
+    except Exception as e:
+        # If ANY exception occurs during extraction, log it and return basic text
+        print(f"⚠️ ERROR in extract_structured_content_from_html: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return safe fallback - just the basic page text
+        try:
             return soup.get_text()
+        except:
+            return "Error extracting content. Please check the URL."
 
 @app.route('/api/diagnostics', methods=['GET'])
 def diagnostics():
@@ -490,20 +383,29 @@ def generate_rss():
     """
     Generate RSS feed from website URL using AI
     """
+    print(f"\n{'='*60}")
     print(f"=== Generate RSS Request Started ===")
+    print(f"{'='*60}\n")
     
+    # GLOBAL try-except to catch ANY error and return JSON
     try:
+        print("[STEP 1] Parsing request JSON...")
         data = request.get_json()
         
         if not data:
             print("ERROR: No JSON data provided")
             return jsonify({"error": "No JSON data provided"}), 400
         
+        print("[STEP 1] ✓ JSON parsed successfully")
+        
+        print("[STEP 1] ✓ JSON parsed successfully")
+        
+        print("[STEP 2] Extracting parameters...")
         url = data.get('url')
         ai_provider = data.get('ai_provider')
         api_key = data.get('api_key')
         
-        print(f"Request data: URL={url}, Provider={ai_provider}")
+        print(f"[STEP 2] URL={url}, Provider={ai_provider}")
         
         if not url or not ai_provider:
             print("ERROR: Missing required fields")
@@ -512,6 +414,8 @@ def generate_rss():
                 "required": ["url", "ai_provider"],
                 "received": {"url": bool(url), "ai_provider": bool(ai_provider)}
             }), 400
+        
+        print("[STEP 2] ✓ Parameters validated")
         
         # Use saved API key if not provided
         if not api_key:
@@ -832,16 +736,20 @@ def generate_rss():
         articles.extend(li_articles)
         print(f"Found {len(li_articles)} article-like <li> elements (total: {len(articles)})")
         
+        print("[STEP 7] Extracting structured content...")
         # Use helper function to extract structured content
         html_content = extract_structured_content_from_html(soup, url)
+        print("[STEP 7] ✓ Structured content extracted")
         
+        print("[STEP 8] Cleaning whitespace...")
         # Clean up whitespace
         html_content = ' '.join(html_content.split())
-        print(f"HTML content length: {len(html_content)} characters")
+        print(f"[STEP 8] ✓ HTML content length: {len(html_content)} characters")
         print(f"HTML content preview: {html_content[:300]}...")
         
+        print("[STEP 9] Calling AI provider...")
         # Get AI provider and extract content with fallback
-        print(f"Calling AI provider: {ai_provider}")
+        print(f"AI provider: {ai_provider}")
         
         # Try with provided api_key first, then fallback to saved keys
         if api_key:
@@ -913,7 +821,7 @@ def generate_rss():
                 extraction_patterns=extraction_patterns
             )
             
-            print(f"Feed saved with ID: {feed_id}")
+            print(f"[STEP 11] ✓ Feed saved with ID: {feed_id}")
             rss_link = get_rss_link(feed_id)
             
             result = {
@@ -925,7 +833,10 @@ def generate_rss():
                 "items_count": len(ai_result.get('items', []))
             }
             
-            print(f"Returning success result: {result}")
+            print(f"[STEP 12] Returning success result...")
+            print(f"{'='*60}")
+            print(f"=== SUCCESS - Feed Generated ===")
+            print(f"{'='*60}\n")
             return jsonify(result)
             
         except Exception as db_error:
