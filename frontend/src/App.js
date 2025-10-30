@@ -299,7 +299,7 @@ function App() {
     setLoading(true);
     
     // Immediately update UI to starting state
-    setSchedulerStatus({ ...schedulerStatus, running: true });
+    setSchedulerStatus(prev => ({ ...prev, running: true }));
     
     try {
       // Use all saved API keys for scheduler
@@ -318,9 +318,9 @@ function App() {
       const data = await res.json();
       
       if (res.status === 200) {
-        alert('Automatic updates started!');
         // Reload to confirm status from server
         await loadSchedulerStatus();
+        alert('Automatic updates started!');
       } else {
         setError(data.error || 'Failed to start scheduler');
         // Revert UI on error
@@ -339,7 +339,7 @@ function App() {
     setLoading(true);
     
     // Immediately update UI to stopped state
-    setSchedulerStatus({ ...schedulerStatus, running: false });
+    setSchedulerStatus(prev => ({ ...prev, running: false }));
     
     try {
       const res = await fetch('/api/scheduler/stop', {
@@ -350,9 +350,9 @@ function App() {
       const data = await res.json();
       
       if (res.status === 200) {
-        alert('Automatic updates stopped!');
         // Reload to confirm status from server
         await loadSchedulerStatus();
+        alert('Automatic updates stopped!');
       } else {
         setError(data.error || 'Failed to stop scheduler');
         // Revert UI on error
