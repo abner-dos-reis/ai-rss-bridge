@@ -587,65 +587,146 @@ def generate_rss():
                     else:
                         link = url + '/' + href.lstrip('/')
                 
-                # Try to find date
-                date_elem = article.find(['time', 'span'], class_=lambda x: x and any(
-                    keyword in x.lower() for keyword in ['date', 'time', 'published', 'created']
-                ))
-                date_text = date_elem.get_text().strip() if date_elem else ""
+                # Try to find date with better detection
+                date_text = ""
+                date_elem = None
+                
+                # Strategy 1: time element with datetime attribute
+                time_elem = article.find('time', datetime=True)
+                if time_elem:
+                    date_text = time_elem.get('datetime', time_elem.get_text().strip())
+                    date_elem = time_elem
+                
+                # Strategy 2: Common date classes
                 if not date_text:
-                    date_elem = article.find(text=lambda x: x and any(
-                        keyword in x.lower() for keyword in ['2023', '2024', '2025', 'october', 'september', 'november']
+                    date_elem = article.find(['time', 'span', 'div'], class_=lambda x: x and any(
+                        keyword in str(x).lower() for keyword in ['date', 'time', 'published', 'created', 'updated', 'post-date']
                     ))
-                    date_text = str(date_elem).strip() if date_elem else ""
+                    if date_elem:
+                        date_text = date_elem.get_text().strip()
+                
+                # Strategy 3: Meta tags
+                if not date_text:
+                    meta_date = soup.find('meta', property=['article:published_time', 'datePublished'])
+                    if meta_date and meta_date.get('content'):
+                        date_text = meta_date['content']
+                
+                # Strategy 4: Search for year patterns in text
+                if not date_text:
+                    import re
+                    date_pattern = re.compile(r'\b(202[3-9]|20[3-9][0-9])\b')
+                    text_content = article.get_text()
+                    match = date_pattern.search(text_content)
+                    if match:
+                        date_text = match.group(0)
+                
+                # Filter out articles older than 2 years
+                from datetime import datetime, timedelta
+                is_recent = True
+                if date_text:
+                    try:
+                        # Try to parse year
+                        import re
+                        year_match = re.search(r'\b(20\d{2})\b', date_text)
+                        if year_match:
+                            year = int(year_match.group(1))
+                            current_year = datetime.now().year
+                            if year < current_year - 2:  # Older than 2 years
+                                is_recent = False
+                                print(f"Skipping old article from {year}: {title[:50]}...")
+                    except:
+                        pass  # If can't parse, include it
+                
+                if not is_recent:
+                    continue  # Skip this article
                 
                 # Try to find image with comprehensive strategy
                 img_elem = None
+                img_candidates = []
                 
-                # Strategy 1: Look for images in absolute positioned divs (modern sites)
+                # Strategy 1: Check for og:image meta tag (most reliable)
+                og_image = soup.find('meta', property='og:image')
+                if og_image and og_image.get('content'):
+                    img_candidates.append(('og:image', og_image['content']))
+                
+                # Strategy 2: Look for images in absolute positioned divs (modern sites)
                 absolute_divs = article.find_all('div', class_=lambda x: x and any(
-                    'absolute' in ' '.join(x).lower() for x in [x] if x
+                    'absolute' in str(x).lower() for x in [x] if x
                 ))
-                
                 for div in absolute_divs:
                     img = div.find('img', src=True)
                     if img and img.get('src'):
-                        img_elem = img
+                        img_candidates.append(('absolute-div', img['src']))
                         break
                 
-                # Strategy 2: Featured/thumbnail images
-                if not img_elem:
-                    img_elem = article.find('img', class_=lambda x: x and any(
-                        keyword in ' '.join(x).lower() for keyword in ['featured', 'thumbnail', 'cover', 'hero', 'main']
-                    ))
+                # Strategy 3: Featured/thumbnail images with srcset support
+                featured_img = article.find('img', class_=lambda x: x and any(
+                    keyword in str(x).lower() for keyword in ['featured', 'thumbnail', 'cover', 'hero', 'main', 'banner']
+                ))
+                if featured_img:
+                    # Check srcset first (higher quality)
+                    srcset = featured_img.get('srcset', '')
+                    if srcset:
+                        # Get the highest resolution from srcset
+                        srcs = [s.strip().split(' ')[0] for s in srcset.split(',')]
+                        if srcs:
+                            img_candidates.append(('featured-srcset', srcs[-1]))
+                    elif featured_img.get('src'):
+                        img_candidates.append(('featured', featured_img['src']))
                 
-                # Strategy 3: Images in common wrapper classes
-                if not img_elem:
-                    for wrapper_class in ['image-wrapper', 'post-image', 'article-image', 'media', 'visual']:
-                        wrapper = article.find(class_=lambda x: x and wrapper_class in ' '.join(x).lower())
-                        if wrapper:
-                            img_elem = wrapper.find('img', src=True)
-                            if img_elem:
-                                break
+                # Strategy 4: Images in common wrapper classes
+                for wrapper_class in ['image-wrapper', 'post-image', 'article-image', 'media', 'visual', 'wp-post-image']:
+                    wrapper = article.find(class_=lambda x: x and wrapper_class in str(x).lower())
+                    if wrapper:
+                        img = wrapper.find('img', src=True)
+                        if img:
+                            img_candidates.append(('wrapper', img['src']))
+                            break
                 
-                # Strategy 4: First significant image
-                if not img_elem:
-                    for img in article.find_all('img', src=True):
-                        src = img.get('src', '')
-                        alt = img.get('alt', '').lower()
-                        
-                        # Skip small images, icons, and logos
-                        if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner']):
+                # Strategy 5: Picture element (responsive images)
+                picture = article.find('picture')
+                if picture:
+                    source = picture.find('source', srcset=True)
+                    if source:
+                        img_candidates.append(('picture-source', source['srcset'].split(',')[0].strip().split(' ')[0]))
+                    img_in_picture = picture.find('img', src=True)
+                    if img_in_picture:
+                        img_candidates.append(('picture-img', img_in_picture['src']))
+                
+                # Strategy 6: First significant image
+                for img in article.find_all('img', src=True):
+                    src = img.get('src', '')
+                    alt = img.get('alt', '').lower()
+                    width = img.get('width', '')
+                    height = img.get('height', '')
+                    
+                    # Skip small images, icons, and logos
+                    if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner', 'pixel', '1x1']):
+                        continue
+                    if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji']):
+                        continue
+                    # Skip very small images
+                    try:
+                        if width and int(width) < 100:
                             continue
-                        if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji']):
+                        if height and int(height) < 100:
                             continue
-                        
-                        img_elem = img
-                        break
+                    except:
+                        pass
+                    
+                    img_candidates.append(('first-valid', src))
+                    break
                 
+                # Choose best image candidate
                 image = ""
-                if img_elem and img_elem.get('src'):
-                    src = img_elem['src']
-                    if src.startswith('http'):
+                if img_candidates:
+                    strategy, src = img_candidates[0]  # Prioritize by order added
+                    print(f"Selected image via strategy: {strategy}")
+                    
+                    # Normalize URL
+                    if src.startswith('//'):
+                        image = 'https:' + src
+                    elif src.startswith('http'):
                         image = src
                     elif src.startswith('/'):
                         image = base_domain + src
