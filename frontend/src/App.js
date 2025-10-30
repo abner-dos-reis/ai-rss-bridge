@@ -21,7 +21,10 @@ function App() {
     claude: '',
     perplexity: ''
   });
-  const [theme, setTheme] = useState('light');
+  const [theme, setTheme] = useState(() => {
+    // Load theme immediately from localStorage to prevent flash
+    return localStorage.getItem('ai-rss-theme') || 'light';
+  });
   const [savedProviders, setSavedProviders] = useState([]);
   const [keyCounts, setKeyCounts] = useState({});
   const [manageProvider, setManageProvider] = useState(null);
@@ -1618,16 +1621,30 @@ function App() {
                         Last validated: {new Date(session.last_validated).toLocaleString()}
                       </p>
                     </div>
-                    <button
-                      onClick={() => handleDeleteSession(session.site_url)}
-                      style={{
-                        ...getButtonStyle(),
-                        backgroundColor: '#dc3545',
-                        color: 'white'
-                      }}
-                    >
-                      Logout
-                    </button>
+                    <div style={{ display: 'flex', gap: 8, flexDirection: 'column' }}>
+                      <button
+                        onClick={() => window.open(session.site_url, '_blank')}
+                        style={{
+                          ...getButtonStyle(),
+                          backgroundColor: '#007cba',
+                          color: 'white',
+                          fontSize: '14px'
+                        }}
+                      >
+                        🌐 Open
+                      </button>
+                      <button
+                        onClick={() => handleDeleteSession(session.site_url)}
+                        style={{
+                          ...getButtonStyle(),
+                          backgroundColor: '#dc3545',
+                          color: 'white',
+                          fontSize: '14px'
+                        }}
+                      >
+                        🗑️ Logout
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))
