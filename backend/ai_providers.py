@@ -25,6 +25,14 @@ class OpenAIProvider(AIProvider):
         
         HTML Content: {truncated_content}...
         
+        CRITICAL INSTRUCTIONS:
+        - The content above contains structured ARTICLE blocks with TITLE, LINK, DATE, IMAGE, CONTENT already extracted
+        - YOU MUST USE THE EXACT LINKS PROVIDED - DO NOT CREATE OR GUESS NEW LINKS
+        - YOU MUST USE THE EXACT IMAGES PROVIDED - DO NOT CREATE OR GUESS NEW IMAGES  
+        - YOU MUST USE THE EXACT DATES PROVIDED - DO NOT CREATE OR GUESS NEW DATES
+        - Your job is to organize this data into clean JSON and improve descriptions
+        - DO NOT hallucinate or fabricate URLs - use what's provided
+        
         Return a JSON with:
         - title: Main title of the website/page
         - description: Brief description of the content
@@ -32,10 +40,25 @@ class OpenAIProvider(AIProvider):
         
         For each article:
         - title: Clear, descriptive title
-        - link: Full URL to the article
+        - link: **USE THE EXACT LINK PROVIDED IN THE ARTICLE BLOCK** (do not create new URLs!)
         - description: Detailed summary in 100-200 words explaining what the article is about, key points, and why it's interesting
-        - image: URL of main article image (if available)
-        - pubDate: Publication date in YYYY-MM-DD format (REQUIRED - extract from article date, use current date if not found)
+        - image: **USE THE EXACT IMAGE PROVIDED IN THE ARTICLE BLOCK** (do not create new image URLs!)
+        - pubDate: **USE THE EXACT DATE PROVIDED IN THE ARTICLE BLOCK** (format as YYYY-MM-DD)
+        
+        CRITICAL IMAGE EXTRACTION:
+        - Use the IMAGE value from each ARTICLE block
+        - If IMAGE is empty, leave as empty string ""
+        - DO NOT fabricate image URLs
+        
+        CRITICAL DATE EXTRACTION:
+        - Use the DATE value from each ARTICLE block
+        - Format as YYYY-MM-DD
+        - If DATE is empty, use current date: 2025-10-30
+        
+        CRITICAL LINK EXTRACTION:
+        - Use the LINK value from each ARTICLE block
+        - DO NOT create or guess article URLs
+        - If LINK is empty, use the base URL: {url}
         
         IMPORTANT: 
         1. Sort articles by pubDate DESC (newest first)
@@ -101,14 +124,45 @@ class GeminiProvider(AIProvider):
         Website URL: {url}
         Content: {truncated_content}
 
+        CRITICAL INSTRUCTIONS - READ CAREFULLY:
+        The content above contains structured ARTICLE blocks with:
+        - TITLE: Article title
+        - LINK: **EXACT article URL** (already extracted from HTML <a href>)
+        - DATE: Publication date
+        - IMAGE: **EXACT image URL** (already extracted from HTML <img src>)
+        - CONTENT: Article preview text
+        
+        YOUR JOB:
+        1. Parse these ARTICLE blocks
+        2. **USE THE EXACT LINK VALUES** - DO NOT create or modify URLs
+        3. **USE THE EXACT IMAGE VALUES** - DO NOT create or modify image URLs
+        4. **USE THE EXACT DATE VALUES** - format as YYYY-MM-DD
+        5. Improve the DESCRIPTION by expanding on the CONTENT provided
+        6. DO NOT hallucinate or fabricate any URLs or data
+        
         INSTRUCTIONS:
-        1. Look for MULTIPLE different articles/posts/news items on this page
+        1. Look for MULTIPLE different ARTICLE blocks in the content
         2. Each item should have a unique title and detailed description (100-200 words)
-        3. EXTRACT ACTUAL PUBLICATION DATES - this is CRITICAL (use current date as fallback)
-        4. Create specific URLs for each article (combine base URL with article paths)
-        5. Extract main image URLs for each article
+        3. **EXTRACT EXACT LINKS** - Use LINK value from ARTICLE block, do not create new URLs
+        4. **EXTRACT EXACT IMAGES** - Use IMAGE value from ARTICLE block, do not create new image URLs
+        5. **EXTRACT EXACT DATES** - Use DATE value from ARTICLE block, format as YYYY-MM-DD
         6. Focus on RECENT articles from 2024-2025
         7. SORT articles by date DESC (newest first)
+        
+        CRITICAL LINK GUIDELINES:
+        - **NEVER CREATE OR GUESS ARTICLE URLs**
+        - Use the LINK value exactly as provided in each ARTICLE block
+        - If LINK is empty, use base URL: {url}
+        
+        CRITICAL IMAGE GUIDELINES:
+        - **NEVER CREATE OR GUESS IMAGE URLs**  
+        - Use the IMAGE value exactly as provided in each ARTICLE block
+        - If IMAGE is empty, leave as empty string ""
+        
+        CRITICAL DATE GUIDELINES:
+        - Use the DATE value from each ARTICLE block
+        - Format as YYYY-MM-DD
+        - If DATE is empty, use current date: 2025-10-30
 
         For a blog/news site like this, look for:
         - Article headlines
@@ -211,6 +265,9 @@ class ClaudeProvider(AIProvider):
         
         HTML Content: {truncated_content}...
         
+        CRITICAL - The content contains structured ARTICLE blocks with TITLE, LINK, DATE, IMAGE already extracted.
+        **YOUR JOB: Use these EXACT values, do not create new URLs or data.**
+        
         Return a JSON with:
         - title: Main title of the website/page
         - description: Brief description of the content
@@ -218,10 +275,16 @@ class ClaudeProvider(AIProvider):
         
         For each article:
         - title: Clear, descriptive title
-        - link: Full URL to the article
+        - link: **USE EXACT LINK from ARTICLE block** (do not create new URLs!)
         - description: Detailed summary in 100-200 words
-        - image: URL of main article image (if available)
-        - pubDate: Publication date in YYYY-MM-DD format (REQUIRED - extract from article date, use current date if not found)
+        - image: **USE EXACT IMAGE from ARTICLE block** (do not create new image URLs!)
+        - pubDate: **USE EXACT DATE from ARTICLE block** (format as YYYY-MM-DD)
+        
+        CRITICAL RULES:
+        - DO NOT create or guess article URLs - use LINK from ARTICLE blocks
+        - DO NOT create or guess image URLs - use IMAGE from ARTICLE blocks  
+        - DO NOT create or guess dates - use DATE from ARTICLE blocks
+        - If LINK/IMAGE/DATE is empty, use empty string "" or current date
         
         IMPORTANT: 
         1. Sort articles by pubDate DESC (newest first)
@@ -275,6 +338,9 @@ class PerplexityProvider(AIProvider):
         
         HTML Content: {truncated_content}...
         
+        CRITICAL - The content contains structured ARTICLE blocks with TITLE, LINK, DATE, IMAGE already extracted.
+        **YOUR JOB: Use these EXACT values, do not create new URLs or data.**
+        
         Return a JSON with:
         - title: Main title of the website/page
         - description: Brief description of the content
@@ -282,10 +348,16 @@ class PerplexityProvider(AIProvider):
         
         For each article:
         - title: Clear, descriptive title
-        - link: Full URL to the article
+        - link: **USE EXACT LINK from ARTICLE block** (do not create new URLs!)
         - description: Detailed summary in 100-200 words
-        - image: URL of main article image (if available)
-        - pubDate: Publication date in YYYY-MM-DD format (REQUIRED - extract from article date, use current date if not found)
+        - image: **USE EXACT IMAGE from ARTICLE block** (do not create new image URLs!)
+        - pubDate: **USE EXACT DATE from ARTICLE block** (format as YYYY-MM-DD)
+        
+        CRITICAL RULES:
+        - DO NOT create or guess article URLs - use LINK from ARTICLE blocks
+        - DO NOT create or guess image URLs - use IMAGE from ARTICLE blocks
+        - DO NOT create or guess dates - use DATE from ARTICLE blocks
+        - If LINK/IMAGE/DATE is empty, use empty string "" or current date
         
         IMPORTANT: 
         1. Sort articles by pubDate DESC (newest first)
