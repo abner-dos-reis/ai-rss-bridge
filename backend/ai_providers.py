@@ -231,6 +231,19 @@ class GeminiProvider(AIProvider):
                             return json.loads(content)
                         except json.JSONDecodeError as e:
                             return {"error": f"Failed to parse Gemini response: {str(e)}"}
+                    
+                    elif response.status_code == 503:
+                        # 503 Service Unavailable - modelo sobrecarregado, tentar novamente
+                        retry_count += 1
+                        print(f"⚠️ Gemini sobrecarregado (503), tentativa {retry_count} de {max_retries + 1}...")
+                        if retry_count <= max_retries:
+                            import time
+                            time.sleep(3)  # Esperar 3s antes de tentar novamente (mais que timeout)
+                            continue
+                        else:
+                            error_text = response.text[:500]
+                            return {"error": f"Gemini API error: {response.status_code} - {error_text}"}
+                    
                     else:
                         error_text = response.text[:500]
                         return {"error": f"Gemini API error: {response.status_code} - {error_text}"}
