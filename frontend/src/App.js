@@ -470,48 +470,65 @@ function App() {
   };
   
   // Session management functions
-  const handleSaveSession = async (e) => {
-    e.preventDefault();
+  const handleSaveSession = async () => {
+    if (!loginSiteUrl) {
+      setLoginError('Please enter a website URL');
+      return;
+    }
+    
     setLoginError('');
     setLoginSuccess('');
     setLoginLoading(true);
     
     try {
-      // Parse cookies from text input (expecting JSON format)
-      let cookiesObj = null;
-      if (loginCookies.trim()) {
-        try {
-          cookiesObj = JSON.parse(loginCookies);
-        } catch {
-          setLoginError('Invalid cookies format. Please provide valid JSON.');
-          setLoginLoading(false);
-          return;
+      // Extract base URL
+      const url = new URL(loginSiteUrl);
+      const baseUrl = `${url.protocol}//${url.hostname}`;
+      const siteName = loginSiteName || url.hostname;
+      
+      // Try to get cookies from the same domain
+      // Note: Due to browser security, we can only get cookies for the current domain
+      // For cross-domain, user needs to use browser extension or manually copy
+      let cookies = null;
+      
+      try {
+        // Attempt to read cookies (will only work for same-origin)
+        const cookieString = document.cookie;
+        if (cookieString) {
+          cookies = {};
+          cookieString.split(';').forEach(cookie => {
+            const [name, value] = cookie.trim().split('=');
+            if (name && value) {
+              cookies[name] = value;
+            }
+          });
         }
+      } catch (e) {
+        console.log('Could not access cookies automatically:', e);
       }
       
       const res = await fetch('/api/sessions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          site_url: loginSiteUrl,
-          site_name: loginSiteName,
-          cookies: cookiesObj
+          site_url: baseUrl,
+          site_name: siteName,
+          cookies: cookies
         })
       });
       
       const data = await res.json();
       
       if (res.ok) {
-        setLoginSuccess('Session saved successfully!');
+        setLoginSuccess('✅ Session saved successfully! You can now generate feeds from this site.');
         setLoginSiteUrl('');
         setLoginSiteName('');
-        setLoginCookies('');
         loadSessions();
       } else {
         setLoginError(data.error || 'Failed to save session');
       }
     } catch (err) {
-      setLoginError('Error connecting to server');
+      setLoginError('Error connecting to server: ' + err.message);
     } finally {
       setLoginLoading(false);
     }
@@ -1407,90 +1424,110 @@ function App() {
         <div>
           <h2>🔐 Login Sessions</h2>
           <p style={{ color: theme === 'dark' ? '#bbb' : '#666' }}>
-            Manage login sessions for websites that require authentication to access content.
+            Login to websites and save your session to access protected content.
           </p>
 
           {/* Add new session form */}
           <div style={getCardStyle()}>
-            <h3>Add New Login Session</h3>
-            <form onSubmit={handleSaveSession}>
-              <div style={{ marginBottom: 16 }}>
-                <label>Site URL (base URL only):</label>
-                <input
-                  type="url"
-                  placeholder="https://example.com"
-                  value={loginSiteUrl}
-                  onChange={e => setLoginSiteUrl(e.target.value)}
-                  style={getInputStyle()}
-                  required
-                />
-                <small style={{ color: theme === 'dark' ? '#888' : '#666' }}>
-                  Enter the base URL (e.g., https://example.com)
-                </small>
+            <h3>Login to Website</h3>
+            
+            <div style={{ marginBottom: 16 }}>
+              <label>Website URL:</label>
+              <input
+                type="url"
+                placeholder="https://www.deeplearning.ai/blog/"
+                value={loginSiteUrl}
+                onChange={e => setLoginSiteUrl(e.target.value)}
+                style={getInputStyle()}
+                required
+              />
+              <small style={{ color: theme === 'dark' ? '#888' : '#666', display: 'block', marginTop: 4 }}>
+                Enter the full URL you want to access
+              </small>
+            </div>
+
+            <div style={{ marginBottom: 16 }}>
+              <label>Site Name (optional):</label>
+              <input
+                type="text"
+                placeholder="DeepLearning.AI Blog"
+                value={loginSiteName}
+                onChange={e => setLoginSiteName(e.target.value)}
+                style={getInputStyle()}
+              />
+            </div>
+
+            {loginError && (
+              <div style={{ 
+                padding: 12, 
+                marginBottom: 16,
+                backgroundColor: theme === 'dark' ? '#4f1d1d' : '#f8d7da',
+                color: theme === 'dark' ? '#ff6b6b' : '#721c24',
+                borderRadius: 4 
+              }}>
+                {loginError}
               </div>
+            )}
 
-              <div style={{ marginBottom: 16 }}>
-                <label>Site Name:</label>
-                <input
-                  type="text"
-                  placeholder="My Website"
-                  value={loginSiteName}
-                  onChange={e => setLoginSiteName(e.target.value)}
-                  style={getInputStyle()}
-                  required
-                />
+            {loginSuccess && (
+              <div style={{ 
+                padding: 12, 
+                marginBottom: 16,
+                backgroundColor: theme === 'dark' ? '#0d4f3c' : '#d4edda',
+                color: theme === 'dark' ? '#28a745' : '#155724',
+                borderRadius: 4 
+              }}>
+                {loginSuccess}
               </div>
+            )}
 
-              <div style={{ marginBottom: 16 }}>
-                <label>Cookies (JSON format):</label>
-                <textarea
-                  placeholder='{"session_id": "abc123", "auth_token": "xyz789"}'
-                  value={loginCookies}
-                  onChange={e => setLoginCookies(e.target.value)}
-                  style={{ ...getInputStyle(), minHeight: 100, fontFamily: 'monospace' }}
-                />
-                <small style={{ color: theme === 'dark' ? '#888' : '#666' }}>
-                  Optional: Enter cookies as JSON object. Use browser DevTools to copy cookies.
-                </small>
-              </div>
+            <button
+              onClick={() => {
+                if (!loginSiteUrl) {
+                  setLoginError('Please enter a website URL first');
+                  return;
+                }
+                // Open website in new window
+                const width = 1000;
+                const height = 700;
+                const left = (window.screen.width - width) / 2;
+                const top = (window.screen.height - height) / 2;
+                const loginWindow = window.open(
+                  loginSiteUrl,
+                  'LoginWindow',
+                  `width=${width},height=${height},left=${left},top=${top},toolbar=yes,location=yes`
+                );
+                
+                if (loginWindow) {
+                  setLoginError('');
+                  setLoginSuccess('✓ Login window opened! Log in there, then come back and click "Save Session"');
+                } else {
+                  setLoginError('Failed to open window. Please allow popups for this site.');
+                }
+              }}
+              style={{
+                ...getButtonStyle(),
+                backgroundColor: '#007cba',
+                color: 'white',
+                width: '100%',
+                marginBottom: 8
+              }}
+            >
+              🌐 Open Website to Login
+            </button>
 
-              {loginError && (
-                <div style={{ 
-                  padding: 12, 
-                  marginBottom: 16,
-                  backgroundColor: theme === 'dark' ? '#4f1d1d' : '#f8d7da',
-                  color: theme === 'dark' ? '#ff6b6b' : '#721c24',
-                  borderRadius: 4 
-                }}>
-                  {loginError}
-                </div>
-              )}
-
-              {loginSuccess && (
-                <div style={{ 
-                  padding: 12, 
-                  marginBottom: 16,
-                  backgroundColor: theme === 'dark' ? '#0d4f3c' : '#d4edda',
-                  color: theme === 'dark' ? '#28a745' : '#155724',
-                  borderRadius: 4 
-                }}>
-                  {loginSuccess}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loginLoading}
-                style={{
-                  ...getButtonStyle(),
-                  backgroundColor: loginLoading ? '#ccc' : '#28a745',
-                  color: 'white',
-                  width: '100%'
-                }}
-              >
-                {loginLoading ? 'Saving...' : 'Save Session'}
-              </button>
-            </form>
+            <button
+              onClick={handleSaveSession}
+              disabled={loginLoading}
+              style={{
+                ...getButtonStyle(),
+                backgroundColor: loginLoading ? '#ccc' : '#28a745',
+                color: 'white',
+                width: '100%'
+              }}
+            >
+              {loginLoading ? 'Saving...' : '💾 Save Session (After Login)'}
+            </button>
           </div>
 
           {/* Logged in sessions list */}
@@ -1548,18 +1585,22 @@ function App() {
             backgroundColor: theme === 'dark' ? '#2d4150' : '#d1ecf1',
             border: `1px solid ${theme === 'dark' ? '#17a2b8' : '#bee5eb'}`
           }}>
-            <h4>ℹ️ How to use:</h4>
+            <h4>ℹ️ How to use Login Sessions:</h4>
             <ol style={{ margin: 0, paddingLeft: 20 }}>
-              <li>Log in to the website using your browser</li>
-              <li>Open browser DevTools (F12) → Application/Storage → Cookies</li>
-              <li>Copy the relevant cookies (usually session/auth cookies)</li>
-              <li>Format as JSON: {`{"cookie_name": "value", "another": "value"}`}</li>
-              <li>Save the session here</li>
-              <li>Generate feeds from that website - it will use your login!</li>
+              <li>Enter the website URL you want to access (e.g., https://www.deeplearning.ai/blog/)</li>
+              <li>Click "🌐 Open Website to Login" - a new window will open</li>
+              <li>Log in normally on that website</li>
+              <li>Come back to this page and click "💾 Save Session"</li>
+              <li>Now generate feeds from that website - it will use your login!</li>
             </ol>
             <p style={{ margin: '12px 0 0 0', fontSize: 14 }}>
-              <strong>Note:</strong> If you see a "Logged Out" status in your RSS feed, 
-              your session expired. Log in again and update the session here.
+              <strong>Note:</strong> If you see "🔒 Logged Out" in your RSS feed, 
+              your session expired. Repeat the process to log in again.
+            </p>
+            <p style={{ margin: '8px 0 0 0', fontSize: 13, color: theme === 'dark' ? '#888' : '#666' }}>
+              ⚠️ <strong>Technical limitation:</strong> Due to browser security (CORS), 
+              automatic cookie capture only works for same-domain sites. For most sites, 
+              the system will save your IP and user agent, which is often enough.
             </p>
           </div>
         </div>

@@ -137,6 +137,16 @@ def try_ai_with_fallback(ai_provider_name, url, html_content):
             provider = get_ai_provider(ai_provider_name, api_key)
             result = provider.extract_content(url, html_content)
             
+            # CRITICAL FIX: Check if result is a tuple (should never happen but happens with some providers)
+            if isinstance(result, tuple):
+                print(f"⚠️ WARNING: Provider {ai_provider_name} returned tuple instead of dict! Converting...")
+                result = result[0] if result and len(result) > 0 else {"error": "Provider returned empty tuple"}
+            
+            if not isinstance(result, dict):
+                print(f"❌ ERROR: Provider {ai_provider_name} returned {type(result).__name__} instead of dict!")
+                last_error = {"error": f"Provider returned invalid type: {type(result).__name__}"}
+                continue
+            
             if "error" not in result:
                 print(f"✓ Success with API key #{i+1}")
                 return result, api_key
@@ -149,8 +159,6 @@ def try_ai_with_fallback(ai_provider_name, url, html_content):
     
     # All keys failed
     print(f"❌ All {len(all_keys)} API key(s) failed for {ai_provider_name}")
-    return last_error, None
-
     return last_error, None
 
 @app.route('/api/diagnostics', methods=['GET'])
