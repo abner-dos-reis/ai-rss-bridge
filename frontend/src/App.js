@@ -23,6 +23,21 @@ function App() {
   const [theme, setTheme] = useState('light');
   const [savedProviders, setSavedProviders] = useState([]);
 
+  // Helper function para fazer fetch com tratamento de erros adequado
+  const safeFetch = async (url, options = {}) => {
+    const response = await fetch(url, options);
+    const contentType = response.headers.get('content-type');
+    
+    // Se não for JSON, retornar erro
+    if (!contentType || !contentType.includes('application/json')) {
+      const textResponse = await response.text();
+      console.error('Non-JSON response from', url, ':', textResponse.substring(0, 200));
+      throw new Error(`Server returned ${response.status}: Expected JSON but got ${contentType || 'unknown type'}`);
+    }
+    
+    return response.json();
+  };
+
   const providers = [
     { value: 'openai', label: 'OpenAI (GPT)' },
     { value: 'gemini', label: 'Google Gemini' },
@@ -166,6 +181,16 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url, ai_provider: aiProvider })
       });
+      
+      // Verificar se a resposta é JSON antes de parsear
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const textResponse = await res.text();
+        console.error('Non-JSON response:', textResponse.substring(0, 200));
+        setError(`Server error: Expected JSON response but got ${contentType}. Check backend logs.`);
+        setLoading(false);
+        return;
+      }
       
       const data = await res.json();
       

@@ -13,11 +13,15 @@ class OpenAIProvider(AIProvider):
         self.base_url = "https://api.openai.com/v1/chat/completions"
     
     def extract_content(self, url: str, html_content: str) -> dict:
+        # Limitar o tamanho do conteúdo para evitar timeouts
+        max_content_length = 4000
+        truncated_content = html_content[:max_content_length]
+        
         prompt = f"""
         Extract RSS feed information from this website content:
         URL: {url}
         
-        HTML Content: {html_content[:4000]}...
+        HTML Content: {truncated_content}...
         
         Return a JSON with:
         - title: Main title of the website/page
@@ -46,7 +50,7 @@ class OpenAIProvider(AIProvider):
         }
         
         try:
-            response = requests.post(self.base_url, headers=headers, json=data, timeout=30)
+            response = requests.post(self.base_url, headers=headers, json=data, timeout=60)
             print(f"OpenAI response status: {response.status_code}")
             
             if response.status_code == 200:
@@ -79,11 +83,17 @@ class GeminiProvider(AIProvider):
         self.base_url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
     
     def extract_content(self, url: str, html_content: str) -> dict:
+        # Limitar o tamanho do conteúdo para evitar timeouts
+        max_content_length = 5000  # Reduzir para 5000 caracteres
+        truncated_content = html_content[:max_content_length]
+        if len(html_content) > max_content_length:
+            truncated_content += "... [conteúdo truncado para evitar timeout]"
+        
         prompt = f"""
         You are an expert web scraper. Analyze this website and extract individual news articles, blog posts, or content items.
 
         Website URL: {url}
-        Content: {html_content}
+        Content: {truncated_content}
 
         INSTRUCTIONS:
         1. Look for MULTIPLE different articles/posts/news items on this page
@@ -129,27 +139,50 @@ class GeminiProvider(AIProvider):
         }
         
         try:
-            response = requests.post(f"{self.base_url}?key={self.api_key}", headers=headers, json=data, timeout=30)
+            # Retry logic for timeout errors
+            max_retries = 2
+            retry_count = 0
+            last_error = None
             
-            if response.status_code == 200:
-                result = response.json()
-                content = result['candidates'][0]['content']['parts'][0]['text']
-                
-                # Clean up the response
-                content = content.strip()
-                if content.startswith('```json'):
-                    content = content[7:]
-                if content.endswith('```'):
-                    content = content[:-3]
-                content = content.strip()
-                
+            while retry_count <= max_retries:
                 try:
-                    return json.loads(content)
-                except json.JSONDecodeError as e:
-                    return {"error": f"Failed to parse Gemini response: {str(e)}"}
-            else:
-                return {"error": f"Gemini API error: {response.status_code}"}
+                    # Aumentar timeout para 60s
+                    response = requests.post(f"{self.base_url}?key={self.api_key}", headers=headers, json=data, timeout=60)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        content = result['candidates'][0]['content']['parts'][0]['text']
+                        
+                        # Clean up the response
+                        content = content.strip()
+                        if content.startswith('```json'):
+                            content = content[7:]
+                        if content.endswith('```'):
+                            content = content[:-3]
+                        content = content.strip()
+                        
+                        try:
+                            return json.loads(content)
+                        except json.JSONDecodeError as e:
+                            return {"error": f"Failed to parse Gemini response: {str(e)}"}
+                    else:
+                        error_text = response.text[:500]
+                        return {"error": f"Gemini API error: {response.status_code} - {error_text}"}
                 
+                except requests.exceptions.ReadTimeout as e:
+                    retry_count += 1
+                    last_error = e
+                    print(f"Gemini timeout, tentativa {retry_count} de {max_retries + 1}...")
+                    if retry_count <= max_retries:
+                        import time
+                        time.sleep(2)  # Esperar 2s antes de tentar novamente
+                        continue
+                    else:
+                        return {"error": f"Gemini timeout após {max_retries + 1} tentativas. Tente usar menos conteúdo ou outro provider."}
+                
+                except requests.exceptions.RequestException as e:
+                    return {"error": f"Gemini request error: {str(e)}"}
+                    
         except Exception as e:
             return {"error": f"Gemini error: {str(e)}"}
 
@@ -159,11 +192,15 @@ class ClaudeProvider(AIProvider):
         self.base_url = "https://api.anthropic.com/v1/messages"
     
     def extract_content(self, url: str, html_content: str) -> dict:
+        # Limitar o tamanho do conteúdo
+        max_content_length = 4000
+        truncated_content = html_content[:max_content_length]
+        
         prompt = f"""
         Extract RSS feed information from this website content:
         URL: {url}
         
-        HTML Content: {html_content[:4000]}...
+        HTML Content: {truncated_content}...
         
         Return a JSON with:
         - title: Main title of the website/page
@@ -191,7 +228,7 @@ class ClaudeProvider(AIProvider):
         }
         
         try:
-            response = requests.post(self.base_url, headers=headers, json=data, timeout=30)
+            response = requests.post(self.base_url, headers=headers, json=data, timeout=60)
             
             if response.status_code == 200:
                 result = response.json()
@@ -212,11 +249,15 @@ class PerplexityProvider(AIProvider):
         self.base_url = "https://api.perplexity.ai/chat/completions"
     
     def extract_content(self, url: str, html_content: str) -> dict:
+        # Limitar o tamanho do conteúdo
+        max_content_length = 4000
+        truncated_content = html_content[:max_content_length]
+        
         prompt = f"""
         Extract RSS feed information from this website content:
         URL: {url}
         
-        HTML Content: {html_content[:4000]}...
+        HTML Content: {truncated_content}...
         
         Return a JSON with:
         - title: Main title of the website/page
@@ -243,7 +284,7 @@ class PerplexityProvider(AIProvider):
         }
         
         try:
-            response = requests.post(self.base_url, headers=headers, json=data, timeout=30)
+            response = requests.post(self.base_url, headers=headers, json=data, timeout=60)
             
             if response.status_code == 200:
                 result = response.json()
