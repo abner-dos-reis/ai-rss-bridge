@@ -34,6 +34,7 @@ function App() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [loginSuccess, setLoginSuccess] = useState('');
+  const [showManualCookies, setShowManualCookies] = useState(false);
 
   // Helper function para fazer fetch com tratamento de erros adequado
   const safeFetch = async (url, options = {}) => {
@@ -486,25 +487,40 @@ function App() {
       const baseUrl = `${url.protocol}//${url.hostname}`;
       const siteName = loginSiteName || url.hostname;
       
-      // Try to get cookies from the same domain
-      // Note: Due to browser security, we can only get cookies for the current domain
-      // For cross-domain, user needs to use browser extension or manually copy
+      // Try to get cookies from manual input first, then try automatic
       let cookies = null;
       
-      try {
-        // Attempt to read cookies (will only work for same-origin)
-        const cookieString = document.cookie;
-        if (cookieString) {
+      if (loginCookies.trim()) {
+        // User provided manual cookies
+        try {
+          // Try to parse as JSON first
+          cookies = JSON.parse(loginCookies);
+        } catch {
+          // If not JSON, parse as cookie string format
           cookies = {};
-          cookieString.split(';').forEach(cookie => {
+          loginCookies.split(';').forEach(cookie => {
             const [name, value] = cookie.trim().split('=');
             if (name && value) {
               cookies[name] = value;
             }
           });
         }
-      } catch (e) {
-        console.log('Could not access cookies automatically:', e);
+      } else {
+        // Try to read cookies automatically (only works for same-origin)
+        try {
+          const cookieString = document.cookie;
+          if (cookieString) {
+            cookies = {};
+            cookieString.split(';').forEach(cookie => {
+              const [name, value] = cookie.trim().split('=');
+              if (name && value) {
+                cookies[name] = value;
+              }
+            });
+          }
+        } catch (e) {
+          console.log('Could not access cookies automatically:', e);
+        }
       }
       
       const res = await fetch('/api/sessions', {
@@ -523,6 +539,8 @@ function App() {
         setLoginSuccess('✅ Session saved successfully! You can now generate feeds from this site.');
         setLoginSiteUrl('');
         setLoginSiteName('');
+        setLoginCookies('');
+        setShowManualCookies(false);
         loadSessions();
       } else {
         setLoginError(data.error || 'Failed to save session');
@@ -1516,18 +1534,56 @@ function App() {
               🌐 Open Website to Login
             </button>
 
-            <button
-              onClick={handleSaveSession}
-              disabled={loginLoading}
-              style={{
-                ...getButtonStyle(),
-                backgroundColor: loginLoading ? '#ccc' : '#28a745',
-                color: 'white',
-                width: '100%'
-              }}
-            >
-              {loginLoading ? 'Saving...' : '💾 Save Session (After Login)'}
-            </button>
+            {showManualCookies && (
+              <div style={{ marginBottom: 16, marginTop: 8 }}>
+                <label>Manual Cookies (Advanced):</label>
+                <textarea
+                  placeholder='{"session_id": "abc123", "auth_token": "xyz789"} or cookie1=value1; cookie2=value2'
+                  value={loginCookies}
+                  onChange={e => setLoginCookies(e.target.value)}
+                  style={{
+                    ...getInputStyle(),
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                    minHeight: 80,
+                    resize: 'vertical'
+                  }}
+                />
+                <small style={{ color: theme === 'dark' ? '#888' : '#666', display: 'block', marginTop: 4 }}>
+                  Paste cookies from browser DevTools (F12 → Application → Cookies). 
+                  Format: JSON object or cookie string
+                </small>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+              <button
+                onClick={handleSaveSession}
+                disabled={loginLoading}
+                style={{
+                  ...getButtonStyle(),
+                  backgroundColor: loginLoading ? '#ccc' : '#28a745',
+                  color: 'white',
+                  flex: 1
+                }}
+              >
+                {loginLoading ? 'Saving...' : '💾 Save Session (After Login)'}
+              </button>
+              
+              <button
+                onClick={() => setShowManualCookies(!showManualCookies)}
+                style={{
+                  ...getButtonStyle(),
+                  backgroundColor: theme === 'dark' ? '#3d3d3d' : '#6c757d',
+                  color: 'white',
+                  flex: 'none',
+                  padding: '8px 12px'
+                }}
+                title="Show manual cookie input for advanced users"
+              >
+                {showManualCookies ? '🔼 Hide' : '🔽 Advanced'}
+              </button>
+            </div>
           </div>
 
           {/* Logged in sessions list */}
@@ -1599,8 +1655,9 @@ function App() {
             </p>
             <p style={{ margin: '8px 0 0 0', fontSize: 13, color: theme === 'dark' ? '#888' : '#666' }}>
               ⚠️ <strong>Technical limitation:</strong> Due to browser security (CORS), 
-              automatic cookie capture only works for same-domain sites. For most sites, 
-              the system will save your IP and user agent, which is often enough.
+              automatic cookie capture only works for same-domain sites. 
+              <br/>
+              💡 <strong>For most sites:</strong> Click "🔽 Advanced" to manually paste cookies from browser DevTools (F12 → Application → Cookies).
             </p>
           </div>
         </div>
