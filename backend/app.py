@@ -226,12 +226,14 @@ def extract_structured_content_from_html(soup, url):
             img_elem = None
             img_candidates = []
             
-            # Strategy 1: og:image meta tag
-            og_image = soup.find('meta', property='og:image')
-            if og_image and og_image.get('content'):
-                img_candidates.append(('og:image', og_image['content']))
+            # Strategy 1: og:image meta tag (ONLY if this is the first article, otherwise skip)
+            # For subsequent articles, og:image is usually the site logo/profile pic
+            if i == 0:
+                og_image = soup.find('meta', property='og:image')
+                if og_image and og_image.get('content'):
+                    img_candidates.append(('og:image', og_image['content']))
             
-            # Strategy 2: Images in absolute positioned divs
+            # Strategy 2: Images in absolute positioned divs (within THIS article)
             absolute_divs = article.find_all('div', class_=lambda x: x and any(
                 'absolute' in str(x).lower() for x in [x] if x
             ))
@@ -241,9 +243,9 @@ def extract_structured_content_from_html(soup, url):
                     img_candidates.append(('absolute-div', img['src']))
                     break
             
-            # Strategy 3: Featured/thumbnail images with srcset support
+            # Strategy 3: Featured/thumbnail images with srcset support (within THIS article)
             featured_img = article.find('img', class_=lambda x: x and any(
-                keyword in str(x).lower() for keyword in ['featured', 'thumbnail', 'cover', 'hero', 'main', 'banner']
+                keyword in str(x).lower() for keyword in ['featured', 'thumbnail', 'cover', 'hero', 'main', 'banner', 'article-cover']
             ))
             if featured_img:
                 srcset = featured_img.get('srcset', '')
@@ -254,8 +256,8 @@ def extract_structured_content_from_html(soup, url):
                 elif featured_img.get('src'):
                     img_candidates.append(('featured', featured_img['src']))
             
-            # Strategy 4: Images in common wrapper classes
-            for wrapper_class in ['image-wrapper', 'post-image', 'article-image', 'media', 'visual', 'wp-post-image']:
+            # Strategy 4: Images in common wrapper classes (within THIS article)
+            for wrapper_class in ['image-wrapper', 'post-image', 'article-image', 'media', 'visual', 'wp-post-image', 'entry-image']:
                 wrapper = article.find(class_=lambda x: x and wrapper_class in str(x).lower())
                 if wrapper:
                     img = wrapper.find('img', src=True)
@@ -263,7 +265,7 @@ def extract_structured_content_from_html(soup, url):
                         img_candidates.append(('wrapper', img['src']))
                         break
             
-            # Strategy 5: Picture element
+            # Strategy 5: Picture element (within THIS article)
             picture = article.find('picture')
             if picture:
                 source = picture.find('source', srcset=True)
@@ -273,27 +275,29 @@ def extract_structured_content_from_html(soup, url):
                 if img_in_picture:
                     img_candidates.append(('picture-img', img_in_picture['src']))
             
-            # Strategy 6: First significant image (within article element)
+            # Strategy 6: FIRST LARGE IMAGE within THIS article (not small icons/avatars)
             for img in article.find_all('img', src=True):
                 src = img.get('src', '')
                 alt = img.get('alt', '').lower()
                 width = img.get('width', '')
                 height = img.get('height', '')
                 
-                # Skip small images, icons, and logos
-                if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner', 'pixel', '1x1']):
+                # Skip small images, icons, logos, and avatars
+                if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner', 'pixel', '1x1', 'profile']):
                     continue
-                if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji']):
+                if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji', 'profile']):
                     continue
+                # Skip very small images (likely icons)
                 try:
-                    if width and int(width) < 100:
+                    if width and int(width) < 200:  # Increased from 100 to 200
                         continue
-                    if height and int(height) < 100:
+                    if height and int(height) < 150:  # Increased from 100 to 150
                         continue
                 except:
                     pass
                 
-                img_candidates.append(('first-valid', src))
+                # This is likely a real article image
+                img_candidates.append(('first-large', src))
                 break
             
             # Choose best image candidate
