@@ -1009,21 +1009,6 @@ def generate_rss():
             "error": f"Internal error: {str(e)}", 
             "type": type(e).__name__
         }), 500
-    
-    # ABSOLUTE FINAL CATCH - Ensures ALWAYS returns JSON
-    except BaseException as fatal_error:
-        print(f"💀 FATAL ERROR in generate_rss: {type(fatal_error).__name__}: {str(fatal_error)}")
-        import traceback
-        traceback.print_exc()
-        try:
-            return jsonify({
-                "error": f"Fatal server error: {str(fatal_error)}",
-                "type": type(fatal_error).__name__,
-                "message": "Please check backend logs"
-            }), 500
-        except:
-            # If even jsonify fails, return plain dict (Flask will convert)
-            return {"error": "Fatal error - unable to process request"}, 500
 
 @app.route('/api/feeds', methods=['GET'])
 def list_feeds():
