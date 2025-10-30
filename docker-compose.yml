@@ -8,6 +8,8 @@ services:
       - ./data:/app/data
     environment:
       - FLASK_ENV=production
+    # Auto-installs cloudscraper for anti-bot protection
+    # Includes retry logic and multiple fetch strategies
     networks:
       - ai-rss-network
 

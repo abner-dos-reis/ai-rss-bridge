@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import requests
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 import json
 from bs4 import BeautifulSoup
 from ai_providers import get_ai_provider
@@ -13,11 +15,65 @@ import threading
 import time
 from datetime import datetime
 
+# Try to import cloudscraper for bypassing Cloudflare
+try:
+    import cloudscraper
+    CLOUDSCRAPER_AVAILABLE = True
+    print("✓ cloudscraper available - can bypass Cloudflare protection")
+except ImportError:
+    CLOUDSCRAPER_AVAILABLE = False
+    print("✗ cloudscraper not available - install with: pip install cloudscraper")
+
 app = Flask(__name__)
 CORS(app)
 db = DatabaseManager("/app/data/feeds.db")
 config_manager = ConfigManager()
 scheduler = get_scheduler(db)
+
+# Create a session with retry strategy
+def create_session():
+    session = requests.Session()
+    retry = Retry(
+        total=3,
+        read=3,
+        connect=3,
+        backoff_factor=0.3,
+        status_forcelist=(500, 502, 504)
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
+
+def check_native_rss_feed(url, response_content):
+    """Try to detect if site has native RSS feed"""
+    try:
+        soup = BeautifulSoup(response_content, 'html.parser')
+        
+        # Look for RSS/Atom feed links in head
+        rss_links = []
+        for link in soup.find_all('link', type=['application/rss+xml', 'application/atom+xml']):
+            href = link.get('href')
+            if href:
+                rss_links.append(href)
+        
+        if rss_links:
+            print(f"Found native RSS feeds: {rss_links}")
+            return rss_links
+    except:
+        pass
+    return None
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """
+    Simple health check endpoint to verify backend is running
+    """
+    return jsonify({
+        "status": "ok",
+        "message": "Backend is running",
+        "cloudscraper": CLOUDSCRAPER_AVAILABLE
+    }), 200
 
 # Ensure all responses are JSON for API routes
 @app.before_request
@@ -61,6 +117,73 @@ def handle_exception(e):
         "error": f"Unexpected error: {str(e)}", 
         "type": type(e).__name__
     }), 500
+
+def try_ai_with_fallback(ai_provider_name, url, html_content):
+    """
+    Try AI extraction with multiple API keys if available
+    Returns (result, api_key_used) or (error_dict, None)
+    """
+    all_keys = config_manager.get_all_api_keys(ai_provider_name)
+    
+    if not all_keys:
+        return {"error": f"No API keys configured for {ai_provider_name}"}, None
+    
+    print(f"Trying {len(all_keys)} API key(s) for {ai_provider_name}")
+    
+    for i, api_key in enumerate(all_keys):
+        print(f"Attempting with API key #{i+1}/{len(all_keys)}")
+        try:
+            provider = get_ai_provider(ai_provider_name, api_key)
+            result = provider.extract_content(url, html_content)
+            
+            if "error" not in result:
+                print(f"✓ Success with API key #{i+1}")
+                return result, api_key
+            else:
+                print(f"✗ API key #{i+1} failed: {result['error']}")
+                last_error = result
+        except Exception as e:
+            print(f"✗ API key #{i+1} exception: {str(e)}")
+            last_error = {"error": str(e)}
+    
+    # All keys failed
+    print(f"❌ All {len(all_keys)} API key(s) failed for {ai_provider_name}")
+    return last_error, None
+
+@app.route('/api/diagnostics', methods=['GET'])
+def diagnostics():
+    """
+    Diagnostic endpoint to check system capabilities
+    """
+    import sys
+    import pkg_resources
+    
+    diagnostics_info = {
+        "python_version": sys.version,
+        "cloudscraper_available": CLOUDSCRAPER_AVAILABLE,
+        "installed_packages": {},
+        "fetch_strategies": []
+    }
+    
+    # Check installed packages
+    important_packages = ['cloudscraper', 'requests', 'beautifulsoup4', 'lxml', 'flask']
+    for package in important_packages:
+        try:
+            version = pkg_resources.get_distribution(package).version
+            diagnostics_info["installed_packages"][package] = version
+        except:
+            diagnostics_info["installed_packages"][package] = "NOT INSTALLED"
+    
+    # List available fetch strategies
+    if CLOUDSCRAPER_AVAILABLE:
+        diagnostics_info["fetch_strategies"].append("Cloudscraper (Cloudflare bypass)")
+    diagnostics_info["fetch_strategies"].extend([
+        "Session with full headers",
+        "Direct request with headers",
+        "Simple request"
+    ])
+    
+    return jsonify(diagnostics_info)
 
 @app.route('/api/info', methods=['GET'])
 def api_info():
@@ -134,21 +257,158 @@ def generate_rss():
                 "feed_info": existing_feed
             })
         
-        # Fetch website content
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
+        # Check cache first to avoid being blocked
+        cached = db.get_cached_content(url)
+        if cached:
+            print(f"=== Using cached content for {url} ===")
+            print(f"Cached at: {cached['cached_at']}, Expires: {cached['expires_at']}")
+            html_content = cached['content']
+        else:
+            print(f"=== No cache found, fetching {url} ===")
+            
+            # Fetch website content with realistic browser headers
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Cache-Control': 'max-age=0',
+                'Referer': 'https://www.google.com/'
+            }
+            
+            # Check if we have a saved session for this site
+            from urllib.parse import urlparse
+            parsed_url = urlparse(url)
+            base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+            saved_session = db.get_site_session(base_url)
+        
+            cookies = None
+            if saved_session and saved_session.get('logged_in'):
+                print(f"=== Using saved session for {base_url} ===")
+                cookies = saved_session.get('cookies')
+                if saved_session.get('headers'):
+                    headers.update(saved_session.get('headers'))
+            
+            print(f"=== Fetching URL: {url} ===")
+            print(f"Cloudscraper available: {CLOUDSCRAPER_AVAILABLE}")
+            print(f"Using saved cookies: {bool(cookies)}")
+            response = None
+            
+            # Try multiple strategies to fetch the website
+            strategies = []
+            
+            # Strategy 1: Cloudscraper (best for Cloudflare/anti-bot protection)
+            if CLOUDSCRAPER_AVAILABLE:
+                def cloudscraper_fetch():
+                    scraper = cloudscraper.create_scraper(
+                        browser={
+                            'browser': 'chrome',
+                            'platform': 'windows',
+                            'desktop': True
+                        }
+                    )
+                    if cookies:
+                        scraper.cookies.update(cookies)
+                    return scraper.get(url, timeout=20, allow_redirects=True)
+                strategies.append(("Cloudscraper (anti-bot bypass)", cloudscraper_fetch))
+            
+            # Strategy 2: Session with full headers and cookies
+            def session_fetch():
+                session = create_session()
+                if cookies:
+                    session.cookies.update(cookies)
+                return session.get(url, headers=headers, timeout=15, allow_redirects=True)
+            strategies.append(("Session with full headers", session_fetch))
+            
+            # Strategy 3: Direct request with headers and cookies
+            def direct_fetch():
+                return requests.get(url, headers=headers, cookies=cookies, timeout=15, allow_redirects=True)
+            strategies.append(("Direct request with headers", direct_fetch))
+            
+            # Strategy 4: Simple request (last resort)
+            strategies.append(("Simple request", lambda: requests.get(url, timeout=15)))
+            
+            last_error = None
+            print(f"Will try {len(strategies)} strategies in order:")
+            for i, (name, _) in enumerate(strategies, 1):
+                print(f"  {i}. {name}")
+            print("")
+            
+            for strategy_name, strategy_func in strategies:
+                try:
+                    print(f"▶ Trying strategy: {strategy_name}...")
+                    response = strategy_func()
+                    response.raise_for_status()
+                    print(f"✓ SUCCESS with '{strategy_name}' - Status: {response.status_code}, Size: {len(response.content)} bytes")
+                    break
+                except requests.exceptions.HTTPError as http_err:
+                    status = response.status_code if response else 'N/A'
+                    print(f"✗ FAILED: {strategy_name} - HTTP {status}: {http_err}")
+                    last_error = http_err
+                    if response and response.status_code == 403:
+                        # Check if session expired
+                        if saved_session:
+                            db.mark_session_logged_out(base_url)
+                        continue  # Try next strategy
+                    elif response and response.status_code >= 400:
+                        break  # Don't retry for other client errors
+                except requests.exceptions.RequestException as req_err:
+                    print(f"✗ FAILED: {strategy_name} - Request error: {req_err}")
+                    last_error = req_err
+                    continue
+            
+            print(f"\n=== Fetch Result ===")
+            if response is None or response.status_code >= 400:
+                print(f"❌ All strategies failed!")
+                error_msg = f"Failed to fetch website: {last_error}"
+                if response and response.status_code == 403:
+                    error_msg = "⛔ This website blocks automated access (403 Forbidden).\n\n"
+                    error_msg += "💡 What you can try:\n"
+                    error_msg += "1. Check if the site has an official RSS feed:\n"
+                    error_msg += f"   • {url.rstrip('/')}/feed\n"
+                    error_msg += f"   • {url.rstrip('/')}/rss\n"
+                    error_msg += f"   • {url.rstrip('/')}/feed.xml\n"
+                    error_msg += "2. Try a specific article page instead of the homepage\n"
+                    error_msg += "3. Check system capabilities at: /api/diagnostics\n"
+                    if not CLOUDSCRAPER_AVAILABLE:
+                        error_msg += "4. ⚠️  Cloudscraper NOT installed - rebuild container with: docker-compose up --build\n"
+                    else:
+                        error_msg += "4. ✓ Cloudscraper is installed but site still blocks access\n"
+                    error_msg += "\n⚙️ Some sites (like DeepLearning.AI) have very strict protection:\n"
+                    error_msg += "• Use their official RSS feed if available\n"
+                    error_msg += "• Try individual article URLs\n"
+                    error_msg += "• Contact site admin for RSS access\n\n"
+                    error_msg += f"Technical: {last_error}"
+                print(f"All strategies failed: {error_msg}")
+                return jsonify({"error": error_msg}), 400
+            
+            # Save successful fetch to cache (24 hours for most sites, 6 hours for blogs)
+            cache_hours = 6 if 'blog' in url.lower() or 'news' in url.lower() else 24
+            db.save_cached_content(url, response.text, response.status_code, cache_hours)
+            print(f"✓ Content cached for {cache_hours} hours")
+            html_content = response.text
+        
+        # Check for native RSS feeds
+        native_feeds = check_native_rss_feed(url, html_content.encode() if isinstance(html_content, str) else html_content)
+        if native_feeds:
+            print(f"⚠️  Native RSS feeds detected: {native_feeds}")
+            # Continue anyway but log that native feeds exist
         
         # Parse HTML with better error handling
         try:
             # Try lxml first for better performance and HTML handling
-            soup = BeautifulSoup(response.content, 'lxml')
+            soup = BeautifulSoup(html_content, 'lxml')
         except:
             try:
                 # Fallback to html.parser
-                soup = BeautifulSoup(response.content, 'html.parser')
+                soup = BeautifulSoup(html_content, 'html.parser')
             except Exception as parse_error:
                 return jsonify({"error": f"Failed to parse HTML: {str(parse_error)}"}), 400
         
@@ -294,12 +554,19 @@ CONTENT: {content}
         print(f"HTML content length: {len(html_content)} characters")
         print(f"HTML content preview: {html_content[:300]}...")
         
-        # Get AI provider and extract content
+        # Get AI provider and extract content with fallback
         print(f"Calling AI provider: {ai_provider}")
-        provider = get_ai_provider(ai_provider, api_key)
-        print(f"Provider obtained: {provider}")
         
-        ai_result = provider.extract_content(url, html_content)
+        # Try with provided api_key first, then fallback to saved keys
+        if api_key:
+            print("Using provided API key")
+            provider = get_ai_provider(ai_provider, api_key)
+            ai_result = provider.extract_content(url, html_content)
+            api_key_used = api_key
+        else:
+            print("Using saved API keys with fallback")
+            ai_result, api_key_used = try_ai_with_fallback(ai_provider, url, html_content)
+        
         print(f"AI result received: {type(ai_result)}")
         
         if "error" in ai_result:
@@ -410,8 +677,25 @@ def get_rss_xml(feed_id):
     if not feed_info:
         return jsonify({"error": "Feed not found"}), 404
     
+    # Check if site requires login and session is expired
+    from urllib.parse import urlparse
+    parsed_url = urlparse(feed_info['url'])
+    base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+    saved_session = db.get_site_session(base_url)
+    
     # Get feed items
     items = db.get_feed_items(feed_id)
+    
+    # If session expired, add logout notification as first item
+    if saved_session and not saved_session.get('logged_in'):
+        logout_item = {
+            'title': '🔒 Logged Out - Action Required',
+            'link': feed_info['url'],
+            'description': f'Your login session for {saved_session.get("site_name", base_url)} has expired. Please log in again to continue receiving feed updates.',
+            'pub_date': datetime.now().strftime('%a, %d %b %Y %H:%M:%S GMT'),
+            'image': None
+        }
+        items = [logout_item] + items
     
     # Generate RSS XML
     feed_data = {
@@ -450,6 +734,50 @@ def delete_all_feeds():
         return jsonify({"message": "All feeds deleted successfully"})
     except Exception as e:
         return jsonify({"error": f"Failed to delete feeds: {str(e)}"}), 500
+
+# Site Session Management Endpoints
+@app.route('/api/sessions', methods=['GET'])
+def get_all_sessions():
+    """
+    Get all site login sessions
+    """
+    try:
+        sessions = db.get_all_site_sessions()
+        return jsonify({"sessions": sessions})
+    except Exception as e:
+        return jsonify({"error": f"Failed to get sessions: {str(e)}"}), 500
+
+@app.route('/api/sessions', methods=['POST'])
+def create_session():
+    """
+    Create/save a site login session with cookies
+    """
+    data = request.get_json()
+    
+    site_url = data.get('site_url')
+    site_name = data.get('site_name')
+    cookies = data.get('cookies')
+    headers = data.get('headers')
+    
+    if not site_url or not site_name:
+        return jsonify({"error": "site_url and site_name are required"}), 400
+    
+    try:
+        db.save_site_session(site_url, site_name, cookies, headers)
+        return jsonify({"message": "Session saved successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to save session: {str(e)}"}), 500
+
+@app.route('/api/sessions/<path:site_url>', methods=['DELETE'])
+def delete_session(site_url):
+    """
+    Delete a site login session
+    """
+    try:
+        db.delete_site_session(site_url)
+        return jsonify({"message": "Session deleted successfully"})
+    except Exception as e:
+        return jsonify({"error": f"Failed to delete session: {str(e)}"}), 500
 
 @app.route('/api/update/<int:feed_id>', methods=['POST'])
 def update_feed(feed_id):
@@ -541,9 +869,12 @@ def reanalyze_feed(feed_id):
             
         html_content = ' '.join(soup.get_text().split())[:6000]
         
-        # Get AI provider and extract content
-        provider = get_ai_provider(ai_provider, api_key)
-        ai_result = provider.extract_content(feed_info['url'], html_content)
+        # Get AI provider and extract content with fallback
+        if api_key:
+            provider = get_ai_provider(ai_provider, api_key)
+            ai_result = provider.extract_content(feed_info['url'], html_content)
+        else:
+            ai_result, _ = try_ai_with_fallback(ai_provider, feed_info['url'], html_content)
         
         if "error" in ai_result:
             return jsonify({"error": ai_result["error"]}), 500
@@ -629,21 +960,54 @@ def stop_scheduler():
 @app.route('/api/config/api-keys', methods=['GET'])
 def get_saved_api_keys():
     """
-    Get list of saved API key providers
+    Get list of saved API key providers with counts
     """
     print("=== GET SAVED API KEYS ===")
     try:
         providers = config_manager.get_saved_providers()
-        print(f"Found saved providers: {providers}")
-        return jsonify({"saved_providers": providers})
+        
+        # Get counts for each provider
+        providers_info = {}
+        for provider in providers:
+            keys = config_manager.get_all_api_keys(provider)
+            providers_info[provider] = len(keys)
+        
+        print(f"Found saved providers: {providers_info}")
+        return jsonify({
+            "saved_providers": providers,
+            "providers_info": providers_info
+        })
     except Exception as e:
         print(f"Error getting saved providers: {e}")
         return jsonify({"saved_providers": [], "error": str(e)})
 
+@app.route('/api/config/api-keys/<provider>/all', methods=['GET'])
+def get_all_keys_for_provider(provider):
+    """
+    Get all API keys for a specific provider (masked)
+    """
+    if provider not in ['openai', 'gemini', 'claude', 'perplexity']:
+        return jsonify({"error": "Invalid provider"}), 400
+    
+    try:
+        keys = config_manager.get_all_api_keys(provider)
+        # Mask keys for security (show first 8 and last 4 characters)
+        masked_keys = []
+        for key in keys:
+            if len(key) > 12:
+                masked = key[:8] + "..." + key[-4:]
+            else:
+                masked = key[:4] + "..."
+            masked_keys.append({"masked": masked, "full": key})
+        
+        return jsonify({"provider": provider, "keys": masked_keys, "count": len(keys)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/config/api-keys', methods=['POST'])
 def save_api_key():
     """
-    Save API key for a provider
+    Save API key for a provider (supports multiple keys)
     """
     print("=== SAVE API KEY REQUEST ===")
     data = request.get_json()
@@ -662,22 +1026,29 @@ def save_api_key():
     
     try:
         config_manager.save_api_key(provider, api_key)
-        print(f"Successfully saved API key for {provider}")
-        return jsonify({"message": f"API key saved for {provider}"})
+        keys_count = len(config_manager.get_all_api_keys(provider))
+        print(f"Successfully saved API key for {provider} (total: {keys_count})")
+        return jsonify({
+            "message": f"API key saved for {provider}",
+            "total_keys": keys_count
+        })
     except Exception as e:
         print(f"Error saving API key: {e}")
         return jsonify({"error": f"Failed to save API key: {str(e)}"}), 500
 
 @app.route('/api/config/api-keys/<provider>', methods=['DELETE'])
-def delete_api_key(provider):
+def delete_api_key_route(provider):
     """
-    Delete saved API key for a provider
+    Delete specific API key or all keys for a provider
     """
     if provider not in ['openai', 'gemini', 'claude', 'perplexity']:
         return jsonify({"error": "Invalid provider"}), 400
     
-    config_manager.delete_api_key(provider)
-    return jsonify({"message": f"API key deleted for {provider}"})
+    data = request.get_json() or {}
+    api_key = data.get('api_key')  # If provided, delete specific key
+    
+    config_manager.delete_api_key(provider, api_key)
+    return jsonify({"message": f"API key(s) deleted for {provider}"})
 
 @app.route('/api/config/theme', methods=['GET'])
 def get_theme():

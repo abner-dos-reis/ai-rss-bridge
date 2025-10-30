@@ -42,6 +42,33 @@ class DatabaseManager:
             )
         ''')
         
+        # Create site_sessions table for login credentials
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS site_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                site_url TEXT UNIQUE NOT NULL,
+                site_name TEXT,
+                cookies TEXT,
+                headers TEXT,
+                session_data TEXT,
+                logged_in BOOLEAN DEFAULT 1,
+                last_validated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create cache table for website content
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS content_cache (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT UNIQUE NOT NULL,
+                content TEXT,
+                status_code INTEGER,
+                cached_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NOT NULL
+            )
+        ''')
+        
         conn.commit()
         conn.close()
     
@@ -240,6 +267,170 @@ class DatabaseManager:
         # Reset the autoincrement sequence to start from 1 again
         cursor.execute('DELETE FROM sqlite_sequence WHERE name = "feeds"')
         cursor.execute('DELETE FROM sqlite_sequence WHERE name = "feed_items"')
+        
+        conn.commit()
+        conn.close()
+    
+    # Site Session Management
+    def save_site_session(self, site_url, site_name, cookies, headers=None, session_data=None):
+        """Save login session for a website"""
+        import json
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO site_sessions 
+            (site_url, site_name, cookies, headers, session_data, logged_in, last_validated, created_at)
+            VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, 
+                    COALESCE((SELECT created_at FROM site_sessions WHERE site_url = ?), CURRENT_TIMESTAMP))
+        ''', (
+            site_url,
+            site_name,
+            json.dumps(cookies) if cookies else None,
+            json.dumps(headers) if headers else None,
+            json.dumps(session_data) if session_data else None,
+            site_url
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_site_session(self, site_url):
+        """Get login session for a website"""
+        import json
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, site_url, site_name, cookies, headers, session_data, logged_in, last_validated, created_at
+            FROM site_sessions WHERE site_url = ?
+        ''', (site_url,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'id': row[0],
+                'site_url': row[1],
+                'site_name': row[2],
+                'cookies': json.loads(row[3]) if row[3] else None,
+                'headers': json.loads(row[4]) if row[4] else None,
+                'session_data': json.loads(row[5]) if row[5] else None,
+                'logged_in': bool(row[6]),
+                'last_validated': row[7],
+                'created_at': row[8]
+            }
+        return None
+    
+    def get_all_site_sessions(self):
+        """Get all site sessions"""
+        import json
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT id, site_url, site_name, logged_in, last_validated, created_at
+            FROM site_sessions ORDER BY created_at DESC
+        ''')
+        
+        rows = cursor.fetchall()
+        conn.close()
+        
+        return [{
+            'id': row[0],
+            'site_url': row[1],
+            'site_name': row[2],
+            'logged_in': bool(row[3]),
+            'last_validated': row[4],
+            'created_at': row[5]
+        } for row in rows]
+    
+    def delete_site_session(self, site_url):
+        """Delete login session for a website"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM site_sessions WHERE site_url = ?', (site_url,))
+        
+        conn.commit()
+        conn.close()
+    
+    def mark_session_logged_out(self, site_url):
+        """Mark a session as logged out"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            UPDATE site_sessions SET logged_in = 0, last_validated = CURRENT_TIMESTAMP
+            WHERE site_url = ?
+        ''', (site_url,))
+        
+        conn.commit()
+        conn.close()
+    
+    # Content Cache Management
+    def get_cached_content(self, url):
+        """Get cached content if not expired"""
+        from datetime import datetime
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('''
+            SELECT content, status_code, cached_at, expires_at
+            FROM content_cache 
+            WHERE url = ? AND expires_at > CURRENT_TIMESTAMP
+        ''', (url,))
+        
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'content': row[0],
+                'status_code': row[1],
+                'cached_at': row[2],
+                'expires_at': row[3]
+            }
+        return None
+    
+    def save_cached_content(self, url, content, status_code, cache_hours=24):
+        """Save content to cache with expiration"""
+        from datetime import datetime, timedelta
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        expires_at = datetime.now() + timedelta(hours=cache_hours)
+        
+        cursor.execute('''
+            INSERT OR REPLACE INTO content_cache (url, content, status_code, cached_at, expires_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP, ?)
+        ''', (url, content, status_code, expires_at.strftime('%Y-%m-%d %H:%M:%S')))
+        
+        conn.commit()
+        conn.close()
+    
+    def clear_expired_cache(self):
+        """Remove expired cache entries"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM content_cache WHERE expires_at <= CURRENT_TIMESTAMP')
+        
+        conn.commit()
+        conn.close()
+    
+    def clear_cache_for_url(self, url):
+        """Clear cache for specific URL"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute('DELETE FROM content_cache WHERE url = ?', (url,))
         
         conn.commit()
         conn.close()

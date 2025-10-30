@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ApiKeyInput from './ApiKeyInput';
+import ManageApiKeys from './ManageApiKeys';
 
 function App() {
   const [url, setUrl] = useState('');
@@ -22,6 +23,17 @@ function App() {
   });
   const [theme, setTheme] = useState('light');
   const [savedProviders, setSavedProviders] = useState([]);
+  const [keyCounts, setKeyCounts] = useState({});
+  const [manageProvider, setManageProvider] = useState(null);
+  
+  // Login session states
+  const [sessions, setSessions] = useState([]);
+  const [loginSiteUrl, setLoginSiteUrl] = useState('');
+  const [loginSiteName, setLoginSiteName] = useState('');
+  const [loginCookies, setLoginCookies] = useState('');
+  const [loginLoading, setLoginLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
+  const [loginSuccess, setLoginSuccess] = useState('');
 
   // Helper function para fazer fetch com tratamento de erros adequado
   const safeFetch = async (url, options = {}) => {
@@ -109,9 +121,22 @@ function App() {
       const data = await res.json();
       console.log("Saved providers response:", data);
       setSavedProviders(data.saved_providers || []);
+      setKeyCounts(data.providers_info || {});
     } catch (err) {
       console.error('Error loading saved providers:', err);
       setSavedProviders([]);
+      setKeyCounts({});
+    }
+  };
+  
+  const loadSessions = async () => {
+    try {
+      const res = await fetch('/api/sessions');
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch (err) {
+      console.error('Error loading sessions:', err);
+      setSessions([]);
     }
   };
 
@@ -149,6 +174,7 @@ function App() {
     loadTheme();
     loadSavedProviders();
     loadLastAiProvider();
+    loadSessions();
   }, []);
 
   useEffect(() => {
@@ -347,6 +373,10 @@ function App() {
   };
 
   const deleteApiKey = async (provider) => {
+    if (!confirm(`Are you sure you want to delete ALL API keys for ${provider}?`)) {
+      return;
+    }
+    
     setConfigError('');
     setConfigSuccess('');
     
@@ -356,7 +386,7 @@ function App() {
       });
       
       if (res.status === 200) {
-        setConfigSuccess(`🗑️ API key deleted for ${provider}!`);
+        setConfigSuccess(`🗑️ All API keys deleted for ${provider}!`);
         loadSavedProviders();
       } else {
         const data = await res.json();
@@ -365,6 +395,15 @@ function App() {
     } catch (err) {
       setConfigError('Error connecting to server');
     }
+  };
+  
+  const handleManageKeys = (provider) => {
+    setManageProvider(provider);
+  };
+  
+  const closeManage = () => {
+    setManageProvider(null);
+    loadSavedProviders(); // Reload to update counts
   };
 
   const toggleTheme = async () => {
@@ -424,6 +463,75 @@ function App() {
       } else {
         const data = await res.json();
         alert(data.error || 'Failed to delete feeds');
+      }
+    } catch (err) {
+      alert('Error connecting to server');
+    }
+  };
+  
+  // Session management functions
+  const handleSaveSession = async (e) => {
+    e.preventDefault();
+    setLoginError('');
+    setLoginSuccess('');
+    setLoginLoading(true);
+    
+    try {
+      // Parse cookies from text input (expecting JSON format)
+      let cookiesObj = null;
+      if (loginCookies.trim()) {
+        try {
+          cookiesObj = JSON.parse(loginCookies);
+        } catch {
+          setLoginError('Invalid cookies format. Please provide valid JSON.');
+          setLoginLoading(false);
+          return;
+        }
+      }
+      
+      const res = await fetch('/api/sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          site_url: loginSiteUrl,
+          site_name: loginSiteName,
+          cookies: cookiesObj
+        })
+      });
+      
+      const data = await res.json();
+      
+      if (res.ok) {
+        setLoginSuccess('Session saved successfully!');
+        setLoginSiteUrl('');
+        setLoginSiteName('');
+        setLoginCookies('');
+        loadSessions();
+      } else {
+        setLoginError(data.error || 'Failed to save session');
+      }
+    } catch (err) {
+      setLoginError('Error connecting to server');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+  
+  const handleDeleteSession = async (siteUrl) => {
+    if (!confirm(`Are you sure you want to logout from ${siteUrl}?`)) {
+      return;
+    }
+    
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(siteUrl)}`, {
+        method: 'DELETE'
+      });
+      
+      if (res.ok) {
+        loadSessions();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete session');
       }
     } catch (err) {
       alert('Error connecting to server');
@@ -587,6 +695,8 @@ function App() {
     setError('');
     setConfigError('');
     setConfigSuccess('');
+    setLoginError('');
+    setLoginSuccess('');
   };
 
   // Theme styles
@@ -706,6 +816,7 @@ function App() {
           onClick={() => changeTab('config')}
           style={{ 
             padding: '8px 16px',
+            marginRight: 8,
             backgroundColor: activeTab === 'config' ? '#007cba' : (theme === 'dark' ? '#2d2d2d' : '#f0f0f0'),
             color: activeTab === 'config' ? 'white' : (theme === 'dark' ? 'white' : 'black'),
             border: 'none',
@@ -714,6 +825,19 @@ function App() {
           }}
         >
           ⚙️ Config
+        </button>
+        <button 
+          onClick={() => changeTab('login')}
+          style={{ 
+            padding: '8px 16px',
+            backgroundColor: activeTab === 'login' ? '#007cba' : (theme === 'dark' ? '#2d2d2d' : '#f0f0f0'),
+            color: activeTab === 'login' ? 'white' : (theme === 'dark' ? 'white' : 'black'),
+            border: 'none',
+            borderRadius: 4,
+            cursor: 'pointer'
+          }}
+        >
+          🔐 Login Sessions
         </button>
       </div>
 
@@ -1254,6 +1378,8 @@ function App() {
                 configSuccess={configSuccess}
                 setConfigError={setConfigError}
                 setConfigSuccess={setConfigSuccess}
+                onManage={handleManageKeys}
+                keyCounts={keyCounts}
               />
             ))}
           </div>
@@ -1268,11 +1394,184 @@ function App() {
             <ul style={{ margin: 0, paddingLeft: 20 }}>
               <li>API keys are encrypted before storage</li>
               <li>Keys are stored locally in the application database</li>
+              <li>You can save multiple keys per provider for fallback</li>
+              <li>If one key fails, the system will automatically try the next one</li>
               <li>You can delete saved keys anytime</li>
               <li>Saved keys will be used automatically when generating feeds</li>
             </ul>
           </div>
         </div>
+      )}
+
+      {activeTab === 'login' && (
+        <div>
+          <h2>🔐 Login Sessions</h2>
+          <p style={{ color: theme === 'dark' ? '#bbb' : '#666' }}>
+            Manage login sessions for websites that require authentication to access content.
+          </p>
+
+          {/* Add new session form */}
+          <div style={getCardStyle()}>
+            <h3>Add New Login Session</h3>
+            <form onSubmit={handleSaveSession}>
+              <div style={{ marginBottom: 16 }}>
+                <label>Site URL (base URL only):</label>
+                <input
+                  type="url"
+                  placeholder="https://example.com"
+                  value={loginSiteUrl}
+                  onChange={e => setLoginSiteUrl(e.target.value)}
+                  style={getInputStyle()}
+                  required
+                />
+                <small style={{ color: theme === 'dark' ? '#888' : '#666' }}>
+                  Enter the base URL (e.g., https://example.com)
+                </small>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label>Site Name:</label>
+                <input
+                  type="text"
+                  placeholder="My Website"
+                  value={loginSiteName}
+                  onChange={e => setLoginSiteName(e.target.value)}
+                  style={getInputStyle()}
+                  required
+                />
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <label>Cookies (JSON format):</label>
+                <textarea
+                  placeholder='{"session_id": "abc123", "auth_token": "xyz789"}'
+                  value={loginCookies}
+                  onChange={e => setLoginCookies(e.target.value)}
+                  style={{ ...getInputStyle(), minHeight: 100, fontFamily: 'monospace' }}
+                />
+                <small style={{ color: theme === 'dark' ? '#888' : '#666' }}>
+                  Optional: Enter cookies as JSON object. Use browser DevTools to copy cookies.
+                </small>
+              </div>
+
+              {loginError && (
+                <div style={{ 
+                  padding: 12, 
+                  marginBottom: 16,
+                  backgroundColor: theme === 'dark' ? '#4f1d1d' : '#f8d7da',
+                  color: theme === 'dark' ? '#ff6b6b' : '#721c24',
+                  borderRadius: 4 
+                }}>
+                  {loginError}
+                </div>
+              )}
+
+              {loginSuccess && (
+                <div style={{ 
+                  padding: 12, 
+                  marginBottom: 16,
+                  backgroundColor: theme === 'dark' ? '#0d4f3c' : '#d4edda',
+                  color: theme === 'dark' ? '#28a745' : '#155724',
+                  borderRadius: 4 
+                }}>
+                  {loginSuccess}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={loginLoading}
+                style={{
+                  ...getButtonStyle(),
+                  backgroundColor: loginLoading ? '#ccc' : '#28a745',
+                  color: 'white',
+                  width: '100%'
+                }}
+              >
+                {loginLoading ? 'Saving...' : 'Save Session'}
+              </button>
+            </form>
+          </div>
+
+          {/* Logged in sessions list */}
+          <div style={{ marginTop: 24 }}>
+            <h3>Logged In Sessions ({sessions.length})</h3>
+            {sessions.length === 0 ? (
+              <div style={getCardStyle()}>
+                <p style={{ margin: 0, color: theme === 'dark' ? '#888' : '#666' }}>
+                  No login sessions saved yet. Add a session above to get started.
+                </p>
+              </div>
+            ) : (
+              sessions.map((session) => (
+                <div key={session.id} style={getCardStyle()}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
+                    <div style={{ flex: 1 }}>
+                      <h4 style={{ margin: '0 0 8px 0' }}>
+                        {session.logged_in ? '✅ ' : '⚠️ '}
+                        {session.site_name}
+                      </h4>
+                      <p style={{ margin: '4px 0', color: theme === 'dark' ? '#888' : '#666', fontSize: 14 }}>
+                        {session.site_url}
+                      </p>
+                      <p style={{ 
+                        margin: '4px 0', 
+                        fontSize: 12, 
+                        color: session.logged_in ? '#28a745' : '#dc3545' 
+                      }}>
+                        {session.logged_in ? 'Logged In' : 'Logged Out - Login Again'}
+                      </p>
+                      <p style={{ margin: '4px 0', color: theme === 'dark' ? '#666' : '#999', fontSize: 12 }}>
+                        Last validated: {new Date(session.last_validated).toLocaleString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteSession(session.site_url)}
+                      style={{
+                        ...getButtonStyle(),
+                        backgroundColor: '#dc3545',
+                        color: 'white'
+                      }}
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* Help section */}
+          <div style={{ 
+            ...getCardStyle(),
+            marginTop: 24,
+            backgroundColor: theme === 'dark' ? '#2d4150' : '#d1ecf1',
+            border: `1px solid ${theme === 'dark' ? '#17a2b8' : '#bee5eb'}`
+          }}>
+            <h4>ℹ️ How to use:</h4>
+            <ol style={{ margin: 0, paddingLeft: 20 }}>
+              <li>Log in to the website using your browser</li>
+              <li>Open browser DevTools (F12) → Application/Storage → Cookies</li>
+              <li>Copy the relevant cookies (usually session/auth cookies)</li>
+              <li>Format as JSON: {`{"cookie_name": "value", "another": "value"}`}</li>
+              <li>Save the session here</li>
+              <li>Generate feeds from that website - it will use your login!</li>
+            </ol>
+            <p style={{ margin: '12px 0 0 0', fontSize: 14 }}>
+              <strong>Note:</strong> If you see a "Logged Out" status in your RSS feed, 
+              your session expired. Log in again and update the session here.
+            </p>
+          </div>
+        </div>
+      )}
+      
+      {/* Manage API Keys Modal */}
+      {manageProvider && (
+        <ManageApiKeys
+          provider={manageProvider}
+          theme={theme}
+          onClose={closeManage}
+        />
       )}
     </div>
   );

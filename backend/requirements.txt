@@ -8,3 +8,5 @@ google-generativeai
 anthropic
 schedule
 cryptography
+cloudscraper
+requests[socks]

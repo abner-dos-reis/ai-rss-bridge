@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 
-function ApiKeyInput({ provider, savedProviders, saveApiKey, deleteApiKey, theme, getInputStyle, getButtonStyle, configError, configSuccess, setConfigError, setConfigSuccess }) {
+function ApiKeyInput({ provider, savedProviders, saveApiKey, deleteApiKey, theme, getInputStyle, getButtonStyle, configError, configSuccess, setConfigError, setConfigSuccess, onManage, keyCounts }) {
   const [inputValue, setInputValue] = useState('');
 
   const handleSave = async () => {
@@ -9,6 +9,8 @@ function ApiKeyInput({ provider, savedProviders, saveApiKey, deleteApiKey, theme
       setInputValue('');
     }
   };
+
+  const keyCount = keyCounts?.[provider.value] || 0;
 
   return (
     <div style={{ 
@@ -21,7 +23,9 @@ function ApiKeyInput({ provider, savedProviders, saveApiKey, deleteApiKey, theme
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <strong>{provider.label}</strong>
         {savedProviders.includes(provider.value) && (
-          <span style={{ color: '#28a745', fontSize: 12 }}>✅ Saved</span>
+          <span style={{ color: '#28a745', fontSize: 12 }}>
+            ✅ {keyCount} key{keyCount !== 1 ? 's' : ''} saved
+          </span>
         )}
       </div>
       
@@ -44,16 +48,28 @@ function ApiKeyInput({ provider, savedProviders, saveApiKey, deleteApiKey, theme
           Save
         </button>
         {savedProviders.includes(provider.value) && (
-          <button
-            onClick={() => deleteApiKey(provider.value)}
-            style={{
-              ...getButtonStyle(),
-              backgroundColor: '#dc3545',
-              color: 'white'
-            }}
-          >
-            Delete
-          </button>
+          <>
+            <button
+              onClick={() => onManage(provider.value)}
+              style={{
+                ...getButtonStyle(),
+                backgroundColor: '#007cba',
+                color: 'white'
+              }}
+            >
+              Manage
+            </button>
+            <button
+              onClick={() => deleteApiKey(provider.value)}
+              style={{
+                ...getButtonStyle(),
+                backgroundColor: '#dc3545',
+                color: 'white'
+              }}
+            >
+              Delete All
+            </button>
+          </>
         )}
       </div>
     </div>
