@@ -161,18 +161,21 @@ def generate_rss():
         
         # Look for article elements
         articles.extend(soup.find_all(['article']))
+        print(f"Found {len(articles)} <article> elements")
         
         # Look for divs with article-like classes
         article_divs = soup.find_all('div', class_=lambda x: x and any(
             keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item', 'story', 'blog']
         ))
         articles.extend(article_divs)
+        print(f"Found {len(article_divs)} article-like <div> elements (total: {len(articles)})")
         
         # Look for list items that might be articles
         li_articles = soup.find_all('li', class_=lambda x: x and any(
             keyword in x.lower() for keyword in ['post', 'article', 'news', 'entry', 'item']
         ))
         articles.extend(li_articles)
+        print(f"Found {len(li_articles)} article-like <li> elements (total: {len(articles)})")
         
         # Build structured content
         structured_content = []
@@ -286,8 +289,10 @@ CONTENT: {content}
             else:
                 html_content = soup.get_text()
         
-        # Clean up whitespace and limit size
-        html_content = ' '.join(html_content.split())[:6000]  # Limit to 6000 chars
+        # Clean up whitespace - não limitar tamanho aqui, deixar o AI provider fazer
+        html_content = ' '.join(html_content.split())
+        print(f"HTML content length: {len(html_content)} characters")
+        print(f"HTML content preview: {html_content[:300]}...")
         
         # Get AI provider and extract content
         print(f"Calling AI provider: {ai_provider}")

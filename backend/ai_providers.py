@@ -14,8 +14,10 @@ class OpenAIProvider(AIProvider):
     
     def extract_content(self, url: str, html_content: str) -> dict:
         # Limitar o tamanho do conteúdo para evitar timeouts
-        max_content_length = 4000
+        max_content_length = 6000  # Aumentar para 6000 caracteres
         truncated_content = html_content[:max_content_length]
+        if len(html_content) > max_content_length:
+            print(f"OpenAI: Content truncated from {len(html_content)} to {max_content_length} chars")
         
         prompt = f"""
         Extract RSS feed information from this website content:
@@ -84,10 +86,11 @@ class GeminiProvider(AIProvider):
     
     def extract_content(self, url: str, html_content: str) -> dict:
         # Limitar o tamanho do conteúdo para evitar timeouts
-        max_content_length = 5000  # Reduzir para 5000 caracteres
+        max_content_length = 8000  # Aumentar para 8000 caracteres para capturar mais conteúdo
         truncated_content = html_content[:max_content_length]
         if len(html_content) > max_content_length:
             truncated_content += "... [conteúdo truncado para evitar timeout]"
+            print(f"Content truncated from {len(html_content)} to {max_content_length} chars")
         
         prompt = f"""
         You are an expert web scraper. Analyze this website and extract individual news articles, blog posts, or content items.
@@ -193,8 +196,10 @@ class ClaudeProvider(AIProvider):
     
     def extract_content(self, url: str, html_content: str) -> dict:
         # Limitar o tamanho do conteúdo
-        max_content_length = 4000
+        max_content_length = 6000  # Aumentar para 6000 caracteres
         truncated_content = html_content[:max_content_length]
+        if len(html_content) > max_content_length:
+            print(f"Claude: Content truncated from {len(html_content)} to {max_content_length} chars")
         
         prompt = f"""
         Extract RSS feed information from this website content:
@@ -250,8 +255,10 @@ class PerplexityProvider(AIProvider):
     
     def extract_content(self, url: str, html_content: str) -> dict:
         # Limitar o tamanho do conteúdo
-        max_content_length = 4000
+        max_content_length = 6000  # Aumentar para 6000 caracteres
         truncated_content = html_content[:max_content_length]
+        if len(html_content) > max_content_length:
+            print(f"Perplexity: Content truncated from {len(html_content)} to {max_content_length} chars")
         
         prompt = f"""
         Extract RSS feed information from this website content:
