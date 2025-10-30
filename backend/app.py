@@ -130,6 +130,7 @@ def try_ai_with_fallback(ai_provider_name, url, html_content):
     
     print(f"Trying {len(all_keys)} API key(s) for {ai_provider_name}")
     
+    last_error = {"error": "Unknown error"}
     for i, api_key in enumerate(all_keys):
         print(f"Attempting with API key #{i+1}/{len(all_keys)}")
         try:
@@ -148,6 +149,8 @@ def try_ai_with_fallback(ai_provider_name, url, html_content):
     
     # All keys failed
     print(f"❌ All {len(all_keys)} API key(s) failed for {ai_provider_name}")
+    return last_error, None
+
     return last_error, None
 
 @app.route('/api/diagnostics', methods=['GET'])
