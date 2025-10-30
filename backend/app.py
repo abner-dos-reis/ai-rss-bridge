@@ -86,16 +86,17 @@ def before_request():
 
 @app.after_request
 def after_request(response):
-    # Ensure API routes return JSON (not HTML) for errors
+    # Ensure API routes return JSON (not HTML) for errors ONLY
     if request.path.startswith('/api/'):
         content_type = response.content_type or ''
-        if 'text/html' in content_type:
-            # Convert HTML response to JSON for consistency
-            print(f"⚠️ WARNING: HTML response detected for {request.path} (status {response.status_code})")
+        # ONLY convert HTML responses that are errors (4xx, 5xx)
+        if 'text/html' in content_type and response.status_code >= 400:
+            # Convert HTML error response to JSON for consistency
+            print(f"⚠️ WARNING: HTML error response detected for {request.path} (status {response.status_code})")
             try:
                 # Try to extract error from HTML
                 html_content = response.get_data(as_text=True)
-                error_msg = "Server returned HTML instead of JSON"
+                error_msg = "Server returned HTML error instead of JSON"
                 
                 # Look for error message in HTML
                 if 'Traceback' in html_content:
@@ -109,7 +110,7 @@ def after_request(response):
                     "status": response.status_code,
                     "hint": "Check backend logs for details"
                 })
-                error_response.status_code = response.status_code if response.status_code >= 400 else 500
+                error_response.status_code = response.status_code
                 return error_response
             except Exception as conv_error:
                 print(f"Failed to convert HTML to JSON: {conv_error}")

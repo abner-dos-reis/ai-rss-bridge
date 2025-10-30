@@ -60,8 +60,13 @@ class OpenAIProvider(AIProvider):
         - DO NOT create or guess article URLs
         - If LINK is empty, use the base URL: {url}
         
+        CRITICAL SORTING:
+        *** MUST sort articles by pubDate in DESCENDING order (newest FIRST, oldest LAST) ***
+        *** Article with date 2025-10-28 MUST come BEFORE article with date 2025-10-14 ***
+        *** DO NOT return articles in the order they appear in HTML - SORT BY DATE! ***
+        
         IMPORTANT: 
-        1. Sort articles by pubDate DESC (newest first)
+        1. Sort articles by pubDate DESC (newest first) - THIS IS MANDATORY!
         2. Focus on RECENT articles from 2024-2025
         3. Extract actual content, not navigation or ads
         """
@@ -286,8 +291,14 @@ class ClaudeProvider(AIProvider):
         - DO NOT create or guess dates - use DATE from ARTICLE blocks
         - If LINK/IMAGE/DATE is empty, use empty string "" or current date
         
+        CRITICAL SORTING:
+        *** MUST sort articles by pubDate in DESCENDING order (newest FIRST, oldest LAST) ***
+        *** Article with date 2025-10-28 MUST come BEFORE article with date 2025-10-14 ***
+        *** DO NOT return articles in the order they appear in HTML - SORT BY DATE! ***
+        
         IMPORTANT: 
-        1. Sort articles by pubDate DESC (newest first)
+        1. Sort articles by pubDate DESC (newest first) - THIS IS MANDATORY!
+
         2. Focus on RECENT articles from 2024-2025
         3. Extract actual content, not navigation or ads
         """
@@ -357,6 +368,11 @@ class PerplexityProvider(AIProvider):
         - DO NOT create or guess article URLs - use LINK from ARTICLE blocks
         - DO NOT create or guess image URLs - use IMAGE from ARTICLE blocks
         - DO NOT create or guess dates - use DATE from ARTICLE blocks
+        
+        CRITICAL SORTING:
+        *** MUST sort articles by pubDate in DESCENDING order (newest FIRST, oldest LAST) ***
+        *** Article with date 2025-10-28 MUST come BEFORE article with date 2025-10-14 ***
+        *** DO NOT return articles in the order they appear in HTML - SORT BY DATE! ***
         - If LINK/IMAGE/DATE is empty, use empty string "" or current date
         
         IMPORTANT: 
