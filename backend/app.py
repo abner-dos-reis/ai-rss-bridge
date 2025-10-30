@@ -805,7 +805,7 @@ def get_all_sessions():
         return jsonify({"error": f"Failed to get sessions: {str(e)}"}), 500
 
 @app.route('/api/sessions', methods=['POST'])
-def create_session():
+def save_session_route():
     """
     Create/save a site login session with cookies
     """
