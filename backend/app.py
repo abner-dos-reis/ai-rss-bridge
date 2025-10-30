@@ -303,17 +303,49 @@ def generate_rss():
             cookies = None
             if saved_session and saved_session.get('logged_in'):
                 print(f"=== Using saved session for {base_url} ===")
+                print(f"Session name: {saved_session.get('site_name')}")
+                print(f"Session last validated: {saved_session.get('last_validated')}")
                 cookies = saved_session.get('cookies')
+                if cookies:
+                    print(f"Found {len(cookies)} cookies in saved session")
                 if saved_session.get('headers'):
+                    print(f"Found custom headers in saved session")
                     headers.update(saved_session.get('headers'))
+            else:
+                print(f"=== No saved session found for {base_url} ===")
+                print(f"You can add a login session in the 'Login Sessions' tab")
             
             print(f"=== Fetching URL: {url} ===")
             print(f"Cloudscraper available: {CLOUDSCRAPER_AVAILABLE}")
             print(f"Using saved cookies: {bool(cookies)}")
+            if cookies:
+                print(f"🍪 Found {len(cookies)} saved cookies")
             response = None
             
             # Try multiple strategies to fetch the website
             strategies = []
+            
+            # Strategy 0: Cloudscraper with saved session cookies (PRIORITY for logged sites)
+            if CLOUDSCRAPER_AVAILABLE and cookies and saved_session:
+                def cloudscraper_with_session():
+                    print(f"🔐 Using Cloudscraper WITH saved login session")
+                    scraper = cloudscraper.create_scraper(
+                        browser={
+                            'browser': 'chrome',
+                            'platform': 'windows',
+                            'desktop': True
+                        }
+                    )
+                    # Add ALL cookies from saved session
+                    scraper.cookies.update(cookies)
+                    
+                    # Add session headers if available
+                    session_headers = headers.copy()
+                    if saved_session.get('headers'):
+                        session_headers.update(saved_session.get('headers'))
+                    
+                    return scraper.get(url, headers=session_headers, timeout=20, allow_redirects=True)
+                strategies.append(("Cloudscraper + Saved Session (logged in)", cloudscraper_with_session))
             
             # Strategy 1: Cloudscraper (best for Cloudflare/anti-bot protection)
             if CLOUDSCRAPER_AVAILABLE:
@@ -448,8 +480,18 @@ def generate_rss():
                     # Special case suggestions
                     if 'deeplearning.ai' in url.lower():
                         error_msg += "\n🎓 DeepLearning.AI specific tips:\n"
-                        error_msg += "• Try: https://www.deeplearning.ai/feed/ (official RSS)\n"
-                        error_msg += "• Or individual article URLs\n"
+                        if not saved_session:
+                            error_msg += "⚠️ NO LOGIN SESSION FOUND\n"
+                            error_msg += "1. Go to 'Login Sessions' tab\n"
+                            error_msg += "2. Add https://www.deeplearning.ai\n"
+                            error_msg += "3. Login on their site\n"
+                            error_msg += "4. Come back and save session\n"
+                            error_msg += "5. Try generating feed again\n\n"
+                            error_msg += "Without login, DeepLearning.AI blocks all automated access.\n"
+                        else:
+                            error_msg += "✓ Login session found but still blocked\n"
+                            error_msg += "• Session may have expired - try logging in again\n"
+                            error_msg += "• Or try individual article URLs\n"
                     
                     error_msg += f"\n📋 Technical: {last_error}"
                 print(f"All strategies failed: {error_msg}")
