@@ -297,6 +297,10 @@ function App() {
     }
 
     setLoading(true);
+    
+    // Immediately update UI to starting state
+    setSchedulerStatus({ ...schedulerStatus, running: true });
+    
     try {
       // Use all saved API keys for scheduler
       const api_keys = {};
@@ -315,12 +319,17 @@ function App() {
       
       if (res.status === 200) {
         alert('Automatic updates started!');
-        loadSchedulerStatus();
+        // Reload to confirm status from server
+        await loadSchedulerStatus();
       } else {
         setError(data.error || 'Failed to start scheduler');
+        // Revert UI on error
+        await loadSchedulerStatus();
       }
     } catch (err) {
       setError('Error starting scheduler');
+      // Revert UI on error
+      await loadSchedulerStatus();
     } finally {
       setLoading(false);
     }
@@ -328,6 +337,10 @@ function App() {
 
   const stopScheduler = async () => {
     setLoading(true);
+    
+    // Immediately update UI to stopped state
+    setSchedulerStatus({ ...schedulerStatus, running: false });
+    
     try {
       const res = await fetch('/api/scheduler/stop', {
         method: 'POST',
@@ -338,12 +351,17 @@ function App() {
       
       if (res.status === 200) {
         alert('Automatic updates stopped!');
-        loadSchedulerStatus();
+        // Reload to confirm status from server
+        await loadSchedulerStatus();
       } else {
         setError(data.error || 'Failed to stop scheduler');
+        // Revert UI on error
+        await loadSchedulerStatus();
       }
     } catch (err) {
       setError('Error stopping scheduler');
+      // Revert UI on error
+      await loadSchedulerStatus();
     } finally {
       setLoading(false);
     }
@@ -1329,7 +1347,7 @@ function App() {
                 cursor: (loading || !savedProviders.includes(aiProvider) || schedulerStatus.running) ? 'not-allowed' : 'pointer'
               }}
             >
-              {loading ? 'Starting...' : 'Start Auto Updates'}
+              Start Auto Updates
             </button>
 
             <button
@@ -1344,7 +1362,7 @@ function App() {
                 cursor: (loading || !schedulerStatus.running) ? 'not-allowed' : 'pointer'
               }}
             >
-              {loading ? 'Stopping...' : 'Stop Auto Updates'}
+              Stop Auto Updates
             </button>
           </div>
 
