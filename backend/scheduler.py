@@ -31,8 +31,7 @@ class FeedScheduler:
     def stop_scheduler(self):
         """Stop the background scheduler"""
         self.running = False
-        if self.scheduler_thread:
-            self.scheduler_thread.join()
+        # Don't wait for thread to finish - it will stop on next iteration
         print("Feed scheduler stopped")
         
     def _run_scheduler(self):
@@ -42,7 +41,11 @@ class FeedScheduler:
         
         while self.running:
             schedule.run_pending()
-            time.sleep(60)  # Check every minute
+            # Sleep in smaller intervals to allow quick stop
+            for _ in range(60):  # 60 seconds total
+                if not self.running:
+                    break
+                time.sleep(1)  # Check every second
             
     def _update_all_feeds(self):
         """Update all feeds that have API keys available"""
