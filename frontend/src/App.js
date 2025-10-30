@@ -250,7 +250,9 @@ function App() {
       const data = await res.json();
       
       if (res.status === 200) {
-        alert('Feed updated successfully!');
+        const itemCount = data.items_count || 0;
+        const method = data.method || 'unknown';
+        setSuccessMessage(`✅ Feed updated! Found ${itemCount} items using ${method === 'pattern_based_scraping' ? 'smart patterns' : method}`);
         loadFeeds();
       } else {
         setError(data.error || 'Update failed');
@@ -1138,8 +1140,14 @@ function App() {
                   <p style={{ color: theme === 'dark' ? '#ccc' : '#666' }}>{feed.description}</p>
                   <p><strong>Source:</strong> <a href={feed.url} target="_blank" rel="noopener noreferrer" style={{ color: theme === 'dark' ? '#4dabf7' : '#007cba' }}>{feed.url}</a></p>
                   <p><strong>AI Provider:</strong> {feed.ai_provider}</p>
-                  <p><strong>Created:</strong> {new Date(feed.created_at).toLocaleString()}</p>
-                  <p><strong>Updated:</strong> {new Date(feed.updated_at).toLocaleString()}</p>
+                  <p><strong>Created:</strong> {new Date(feed.created_at).toLocaleString(undefined, { 
+                    dateStyle: 'medium', 
+                    timeStyle: 'short' 
+                  })}</p>
+                  <p><strong>Updated:</strong> {new Date(feed.updated_at).toLocaleString(undefined, { 
+                    dateStyle: 'medium', 
+                    timeStyle: 'short' 
+                  })} <span style={{ fontSize: '11px', color: theme === 'dark' ? '#888' : '#999' }}>(your local time)</span></p>
                   
                   <div style={{ marginTop: 12 }}>
                     <strong>RSS Link:</strong>
