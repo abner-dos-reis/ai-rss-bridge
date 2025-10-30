@@ -338,12 +338,31 @@ def generate_rss():
                 return session.get(url, headers=headers, timeout=15, allow_redirects=True)
             strategies.append(("Session with full headers", session_fetch))
             
-            # Strategy 3: Direct request with headers and cookies
+            # Strategy 3: Session with varied User-Agent (for restrictive sites)
+            def varied_session_fetch():
+                session = create_session()
+                varied_headers = headers.copy()
+                varied_headers['User-Agent'] = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
+                if cookies:
+                    session.cookies.update(cookies)
+                return session.get(url, headers=varied_headers, timeout=15, allow_redirects=True)
+            strategies.append(("Session with Safari User-Agent", varied_session_fetch))
+            
+            # Strategy 4: Direct request with headers and cookies
             def direct_fetch():
                 return requests.get(url, headers=headers, cookies=cookies, timeout=15, allow_redirects=True)
             strategies.append(("Direct request with headers", direct_fetch))
             
-            # Strategy 4: Simple request (last resort)
+            # Strategy 5: Minimal headers (for over-protective sites)
+            def minimal_fetch():
+                minimal_headers = {
+                    'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101 Firefox/119.0',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+                }
+                return requests.get(url, headers=minimal_headers, timeout=15, allow_redirects=True)
+            strategies.append(("Minimal headers (Firefox)", minimal_fetch))
+            
+            # Strategy 6: Simple request (last resort)
             strategies.append(("Simple request", lambda: requests.get(url, timeout=15)))
             
             last_error = None
@@ -380,23 +399,59 @@ def generate_rss():
                 print(f"❌ All strategies failed!")
                 error_msg = f"Failed to fetch website: {last_error}"
                 if response and response.status_code == 403:
-                    error_msg = "⛔ This website blocks automated access (403 Forbidden).\n\n"
-                    error_msg += "💡 What you can try:\n"
-                    error_msg += "1. Check if the site has an official RSS feed:\n"
-                    error_msg += f"   • {url.rstrip('/')}/feed\n"
-                    error_msg += f"   • {url.rstrip('/')}/rss\n"
-                    error_msg += f"   • {url.rstrip('/')}/feed.xml\n"
+                    # Try to find RSS feed automatically
+                    print("🔍 Site blocked, checking for native RSS feed...")
+                    possible_feeds = [
+                        f"{url.rstrip('/')}/feed/",
+                        f"{url.rstrip('/')}/rss/",
+                        f"{url.rstrip('/')}/feed.xml",
+                        f"{url.rstrip('/')}/rss.xml",
+                        f"{base_url}/feed/",
+                        f"{base_url}/rss/"
+                    ]
+                    
+                    found_feed = None
+                    for feed_url in possible_feeds:
+                        try:
+                            print(f"  Checking: {feed_url}")
+                            feed_response = requests.get(feed_url, headers={'User-Agent': headers['User-Agent']}, timeout=5)
+                            if feed_response.status_code == 200 and ('xml' in feed_response.headers.get('content-type', '').lower() or 
+                                                                      b'<rss' in feed_response.content[:500] or 
+                                                                      b'<feed' in feed_response.content[:500]):
+                                found_feed = feed_url
+                                print(f"  ✓ Found RSS feed: {feed_url}")
+                                break
+                        except:
+                            continue
+                    
+                    if found_feed:
+                        error_msg = f"⛔ Website blocks automated access, but found official RSS feed!\n\n"
+                        error_msg += f"✅ Use this URL instead: {found_feed}\n\n"
+                        error_msg += "Try generating the feed again with this RSS URL."
+                    else:
+                        error_msg = "⛔ This website blocks automated access (403 Forbidden).\n\n"
+                        error_msg += "💡 What you can try:\n"
+                        error_msg += "1. Check if the site has an official RSS feed:\n"
+                        error_msg += f"   • {url.rstrip('/')}/feed/\n"
+                        error_msg += f"   • {url.rstrip('/')}/rss/\n"
+                        error_msg += f"   • {url.rstrip('/')}/feed.xml\n"
                     error_msg += "2. Try a specific article page instead of the homepage\n"
                     error_msg += "3. Check system capabilities at: /api/diagnostics\n"
                     if not CLOUDSCRAPER_AVAILABLE:
                         error_msg += "4. ⚠️  Cloudscraper NOT installed - rebuild container with: docker-compose up --build\n"
                     else:
                         error_msg += "4. ✓ Cloudscraper is installed but site still blocks access\n"
-                    error_msg += "\n⚙️ Some sites (like DeepLearning.AI) have very strict protection:\n"
+                    error_msg += "\n⚙️ Some sites have very strict protection:\n"
                     error_msg += "• Use their official RSS feed if available\n"
                     error_msg += "• Try individual article URLs\n"
-                    error_msg += "• Contact site admin for RSS access\n\n"
-                    error_msg += f"Technical: {last_error}"
+                    
+                    # Special case suggestions
+                    if 'deeplearning.ai' in url.lower():
+                        error_msg += "\n🎓 DeepLearning.AI specific tips:\n"
+                        error_msg += "• Try: https://www.deeplearning.ai/feed/ (official RSS)\n"
+                        error_msg += "• Or individual article URLs\n"
+                    
+                    error_msg += f"\n📋 Technical: {last_error}"
                 print(f"All strategies failed: {error_msg}")
                 return jsonify({"error": error_msg}), 400
             
