@@ -295,10 +295,12 @@ function App() {
         alert(`✅ Feed updated successfully!\n\nFound ${itemCount} new items using ${method === 'pattern_based_scraping' ? 'smart patterns' : method}`);
         loadFeeds();
       } else {
+        alert(`❌ Update failed:\n\n${data.error || 'Unknown error'}\n\n${data.message || ''}\n\n${data.suggestion || ''}`);
         setError(data.error || 'Update failed');
       }
     } catch (err) {
-      setError('Error updating feed');
+      alert(`❌ Error updating feed:\n\n${err.message}`);
+      setError('Error updating feed: ' + err.message);
     } finally {
       setLoading(false);
     }

@@ -248,25 +248,39 @@ def extract_structured_content_from_html(soup, url):
             img_elem = None
             img_candidates = []
             
+            print(f"  🔍 Starting image extraction for article {i+1}...")
+            
             # Strategy 1: og:image meta tag (ONLY if this is the first article, otherwise skip)
             # For subsequent articles, og:image is usually the site logo/profile pic
             if i == 0:
                 og_image = soup.find('meta', property='og:image')
                 if og_image and og_image.get('content'):
+                    print(f"  ✓ Strategy 1 (og:image): Found {og_image['content'][:80]}")
                     img_candidates.append(('og:image', og_image['content']))
+                else:
+                    print(f"  ✗ Strategy 1 (og:image): Not found")
+            else:
+                print(f"  ⊘ Strategy 1 (og:image): Skipped (not first article)")
             
             # Strategy 2: Images in absolute positioned divs (within THIS article)
             absolute_divs = article.find_all('div', class_=lambda x: x and any(
                 'absolute' in str(x).lower() for x in [x] if x
             ))
+            if absolute_divs:
+                print(f"  → Strategy 2: Found {len(absolute_divs)} absolute divs")
             for div in absolute_divs:
                 img = div.find('img', src=True)
                 if img and img.get('src'):
+                    print(f"  ✓ Strategy 2 (absolute-div): Found {img['src'][:80]}")
                     img_candidates.append(('absolute-div', img['src']))
                     break
+            if not any(s[0] == 'absolute-div' for s in img_candidates):
+                print(f"  ✗ Strategy 2 (absolute-div): No images found")
             
             # Strategy 2.5: Images with large width/height attributes (within THIS article)
             large_imgs = article.find_all('img', src=True)
+            print(f"  → Strategy 2.5: Checking {len(large_imgs)} images for large dimensions...")
+            found_large = False
             for img in large_imgs:
                 try:
                     width = img.get('width', '')
@@ -274,12 +288,17 @@ def extract_structured_content_from_html(soup, url):
                     if width and height:
                         w = int(width)
                         h = int(height)
+                        print(f"    - Image: {img.get('src', 'no-src')[:50]}... ({w}x{h})")
                         # If image is larger than 400x300, it's likely the main article image
                         if w >= 400 and h >= 300:
+                            print(f"  ✓ Strategy 2.5 (large-dimensions): Found {img['src'][:80]} ({w}x{h})")
                             img_candidates.append(('large-dimensions', img['src']))
+                            found_large = True
                             break
-                except (ValueError, TypeError):
+                except (ValueError, TypeError) as e:
                     continue
+            if not found_large:
+                print(f"  ✗ Strategy 2.5 (large-dimensions): No large images found")
             
             # Strategy 3: Featured/thumbnail images with srcset support (within THIS article)
             featured_img = article.find('img', class_=lambda x: x and any(
@@ -291,13 +310,19 @@ def extract_structured_content_from_html(soup, url):
                 ]
             ))
             if featured_img:
+                classes = featured_img.get('class', [])
+                print(f"  ✓ Strategy 3 (featured): Found image with classes: {classes}")
                 srcset = featured_img.get('srcset', '')
                 if srcset:
                     srcs = [s.strip().split(' ')[0] for s in srcset.split(',')]
                     if srcs:
+                        print(f"  ✓ Strategy 3 (featured-srcset): Using {srcs[-1][:80]}")
                         img_candidates.append(('featured-srcset', srcs[-1]))
                 elif featured_img.get('src'):
+                    print(f"  ✓ Strategy 3 (featured): Using {featured_img['src'][:80]}")
                     img_candidates.append(('featured', featured_img['src']))
+            else:
+                print(f"  ✗ Strategy 3 (featured): No featured image found")
             
             # Strategy 4: Images in common wrapper classes (within THIS article)
             wrapper_classes = [
@@ -350,9 +375,15 @@ def extract_structured_content_from_html(soup, url):
             
             # Choose best image candidate
             image = ""
+            print(f"  📊 Total candidates found: {len(img_candidates)}")
             if img_candidates:
+                for idx, (strat, src) in enumerate(img_candidates):
+                    print(f"    {idx+1}. {strat}: {src[:80]}")
+                
                 strategy, src = img_candidates[0]  # Prioritize by order added
-                print(f"Selected image via strategy: {strategy}")
+                print(f"  ✅ SELECTED image via strategy: {strategy}")
+                print(f"     URL: {src[:120]}")
+
                 
                 # Normalize URL
                 if src.startswith('//'):
@@ -363,6 +394,8 @@ def extract_structured_content_from_html(soup, url):
                     image = base_domain + src
                 elif not src.startswith('data:'):
                     image = base_domain + '/' + src.lstrip('/')
+            else:
+                print(f"  ❌ NO IMAGE FOUND for article {i+1}")
             
             # Get content preview
             content = article.get_text().strip()[:400]  # First 400 chars
