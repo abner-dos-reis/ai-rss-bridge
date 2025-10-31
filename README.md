@@ -2,7 +2,19 @@
 
 > **Transform any website into RSS feeds using Artificial Intelligence**
 
-A powerful, intelligent RSS feed generator that uses AI to extract structured content from any website and create clean, readable RSS feeds. Features smart pattern learning, automatic updates, and multi-AI provider support.
+**Built with**: AI for syntax | Human for logic | Learning clean, scalable code  
+All repos public to show my evolution as a developer 📈
+
+---
+
+## ⚠️ Status: IN ACTIVE DEVELOPMENT  
+
+**What works**: LinkedIn, Medium (with login), WordPress, most news sites  
+**What doesn't**: Some sites with aggressive anti-bot, image extraction (temp disabled)
+
+---
+
+A powerful RSS feed generator that uses AI to extract structured content from any website. Features smart pattern learning, automatic updates, and multi-AI provider support.
 
 ![AI RSS Bridge](Screenshots/Screenshot1.png)
 
@@ -104,6 +116,16 @@ docker compose up --build -d
    - Use the generated RSS URL in your favorite RSS reader
    - Links work with Feedly, Inoreader, or any RSS client
    - Updates automatically every hour (configurable)
+
+## 💡 Pro Tips
+
+If a site doesn't work immediately, try:
+1. **Add a login session first** - Many sites work better when authenticated
+2. **Use a different AI provider** - Gemini vs OpenAI may yield different results
+3. **Retry after a few minutes** - API rate limits are temporary
+4. **Try individual article URLs** instead of homepage
+
+---
 
 ## 🔥 What's New in v2.0
 

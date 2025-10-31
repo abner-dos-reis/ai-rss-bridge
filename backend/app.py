@@ -276,163 +276,9 @@ def extract_structured_content_from_html(soup, url):
                 print(f"Found article {i+1}: {title[:50]}... | Date: {date_text}")
 
                 
-                # Extract image with comprehensive strategy
+                # IMAGE EXTRACTION DISABLED - Was causing "Expected JSON response" errors
+                # TODO: Re-implement with proper error handling later
                 image = ""
-                try:
-                    img_elem = None
-                    img_candidates = []
-                    
-                    print(f"  🔍 Starting image extraction for article {i+1}...")
-                
-                    # Strategy 1: og:image meta tag (ONLY if this is the first article, otherwise skip)
-                    # For subsequent articles, og:image is usually the site logo/profile pic
-                    if i == 0:
-                        og_image = soup.find('meta', property='og:image')
-                        if og_image and og_image.get('content'):
-                            print(f"  ✓ Strategy 1 (og:image): Found {og_image['content'][:80]}")
-                            img_candidates.append(('og:image', og_image['content']))
-                        else:
-                            print(f"  ✗ Strategy 1 (og:image): Not found")
-                    else:
-                        print(f"  ⊘ Strategy 1 (og:image): Skipped (not first article)")
-                    
-                    # Strategy 2: Images in absolute positioned divs (within THIS article)
-                    absolute_divs = article.find_all('div', class_=lambda x: x and any(
-                        'absolute' in str(x).lower() for x in [x] if x
-                    ))
-                    if absolute_divs:
-                        print(f"  → Strategy 2: Found {len(absolute_divs)} absolute divs")
-                    for div in absolute_divs:
-                        img = div.find('img', src=True)
-                        if img and img.get('src'):
-                            print(f"  ✓ Strategy 2 (absolute-div): Found {img['src'][:80]}")
-                            img_candidates.append(('absolute-div', img['src']))
-                            break
-                    if not any(s[0] == 'absolute-div' for s in img_candidates):
-                        print(f"  ✗ Strategy 2 (absolute-div): No images found")
-                    
-                    # Strategy 2.5: Images with large width/height attributes (within THIS article)
-                    large_imgs = article.find_all('img', src=True)
-                    print(f"  → Strategy 2.5: Checking {len(large_imgs)} images for large dimensions...")
-                    found_large = False
-                    for img in large_imgs:
-                        try:
-                            width = img.get('width', '')
-                            height = img.get('height', '')
-                            if width and height:
-                                w = int(width)
-                                h = int(height)
-                                print(f"    - Image: {img.get('src', 'no-src')[:50]}... ({w}x{h})")
-                                # If image is larger than 400x300, it's likely the main article image
-                                if w >= 400 and h >= 300:
-                                    print(f"  ✓ Strategy 2.5 (large-dimensions): Found {img['src'][:80]} ({w}x{h})")
-                                    img_candidates.append(('large-dimensions', img['src']))
-                                    found_large = True
-                                    break
-                        except (ValueError, TypeError) as e:
-                            continue
-                    if not found_large:
-                        print(f"  ✗ Strategy 2.5 (large-dimensions): No large images found")
-                    
-                    # Strategy 3: Featured/thumbnail images with srcset support (within THIS article)
-                    featured_img = article.find('img', class_=lambda x: x and any(
-                        keyword in str(x).lower() for keyword in [
-                            'featured', 'thumbnail', 'cover', 'hero', 'main', 'banner', 
-                            'article-cover', 'entry-image', 'post-image', 
-                            'wp-image', 'object-cover',  # WordPress and Tailwind
-                            'reader-cover', 'evi-image'  # LinkedIn
-                        ]
-                    ))
-                    if featured_img:
-                        classes = featured_img.get('class', [])
-                        print(f"  ✓ Strategy 3 (featured): Found image with classes: {classes}")
-                        srcset = featured_img.get('srcset', '')
-                        if srcset:
-                            srcs = [s.strip().split(' ')[0] for s in srcset.split(',')]
-                            if srcs:
-                                print(f"  ✓ Strategy 3 (featured-srcset): Using {srcs[-1][:80]}")
-                                img_candidates.append(('featured-srcset', srcs[-1]))
-                        elif featured_img.get('src'):
-                            print(f"  ✓ Strategy 3 (featured): Using {featured_img['src'][:80]}")
-                            img_candidates.append(('featured', featured_img['src']))
-                    else:
-                        print(f"  ✗ Strategy 3 (featured): No featured image found")
-                    
-                    # Strategy 4: Images in common wrapper classes (within THIS article)
-                    wrapper_classes = [
-                        'image-wrapper', 'post-image', 'article-image', 'media', 'visual', 
-                        'wp-post-image', 'entry-image', 'post-thumbnail', 'attachment',
-                        'figure', 'img-wrap', 'photo', 'picture-wrapper'
-                    ]
-                    for wrapper_class in wrapper_classes:
-                        wrapper = article.find(class_=lambda x: x and wrapper_class in str(x).lower())
-                        if wrapper:
-                            img = wrapper.find('img', src=True)
-                            if img:
-                                img_candidates.append(('wrapper', img['src']))
-                                break
-                    
-                    # Strategy 5: Picture element (within THIS article)
-                    picture = article.find('picture')
-                    if picture:
-                        source = picture.find('source', srcset=True)
-                        if source:
-                            img_candidates.append(('picture-source', source['srcset'].split(',')[0].strip().split(' ')[0]))
-                        img_in_picture = picture.find('img', src=True)
-                        if img_in_picture:
-                            img_candidates.append(('picture-img', img_in_picture['src']))
-                    
-                    # Strategy 6: FIRST LARGE IMAGE within THIS article (not small icons/avatars)
-                    for img in article.find_all('img', src=True):
-                        src = img.get('src', '')
-                        alt = img.get('alt', '').lower()
-                        width = img.get('width', '')
-                        height = img.get('height', '')
-                        
-                        # Skip small images, icons, logos, and avatars
-                        if any(keyword in src.lower() for keyword in ['icon', 'logo', 'avatar', 'emoji', 'spinner', 'pixel', '1x1', 'profile']):
-                            continue
-                        if any(keyword in alt for keyword in ['icon', 'logo', 'avatar', 'emoji', 'profile']):
-                            continue
-                        # Skip very small images (likely icons)
-                        try:
-                            if width and int(width) < 200:  # Increased from 100 to 200
-                                continue
-                            if height and int(height) < 150:  # Increased from 100 to 150
-                                continue
-                        except:
-                            pass
-                        
-                        # This is likely a real article image
-                        img_candidates.append(('first-large', src))
-                        break
-                    
-                    # Choose best image candidate
-                    print(f"  📊 Total candidates found: {len(img_candidates)}")
-                    if img_candidates:
-                        for idx, (strat, src) in enumerate(img_candidates):
-                            print(f"    {idx+1}. {strat}: {src[:80]}")
-                        
-                        strategy, src = img_candidates[0]  # Prioritize by order added
-                        print(f"  ✅ SELECTED image via strategy: {strategy}")
-                        print(f"     URL: {src[:120]}")
-
-                        
-                        # Normalize URL
-                        if src.startswith('//'):
-                            image = 'https:' + src
-                        elif src.startswith('http'):
-                            image = src
-                        elif src.startswith('/'):
-                            image = base_domain + src
-                        elif not src.startswith('data:'):
-                            image = base_domain + '/' + src.lstrip('/')
-                    else:
-                        print(f"  ❌ NO IMAGE FOUND for article {i+1}")
-                
-                except Exception as e:
-                    print(f"  ⚠️ Image extraction ERROR: {type(e).__name__}: {str(e)}")
-                    image = ""
                 
                 # Get content preview
                 try:
@@ -537,21 +383,29 @@ def generate_rss():
     """
     Generate RSS feed from website URL using AI
     """
+    print(f"\n{'='*60}")
     print(f"=== Generate RSS Request Started ===")
+    print(f"{'='*60}\n")
     
     # GLOBAL try-except to catch ANY error and return JSON
     try:
+        print("[STEP 1] Parsing request JSON...")
         data = request.get_json()
         
         if not data:
             print("ERROR: No JSON data provided")
             return jsonify({"error": "No JSON data provided"}), 400
         
+        print("[STEP 1] ✓ JSON parsed successfully")
+        
+        print("[STEP 1] ✓ JSON parsed successfully")
+        
+        print("[STEP 2] Extracting parameters...")
         url = data.get('url')
         ai_provider = data.get('ai_provider')
         api_key = data.get('api_key')
         
-        print(f"Request data: URL={url}, Provider={ai_provider}")
+        print(f"[STEP 2] URL={url}, Provider={ai_provider}")
         
         if not url or not ai_provider:
             print("ERROR: Missing required fields")
@@ -560,6 +414,8 @@ def generate_rss():
                 "required": ["url", "ai_provider"],
                 "received": {"url": bool(url), "ai_provider": bool(ai_provider)}
             }), 400
+        
+        print("[STEP 2] ✓ Parameters validated")
         
         # Use saved API key if not provided
         if not api_key:
@@ -880,16 +736,20 @@ def generate_rss():
         articles.extend(li_articles)
         print(f"Found {len(li_articles)} article-like <li> elements (total: {len(articles)})")
         
+        print("[STEP 7] Extracting structured content...")
         # Use helper function to extract structured content
         html_content = extract_structured_content_from_html(soup, url)
+        print("[STEP 7] ✓ Structured content extracted")
         
+        print("[STEP 8] Cleaning whitespace...")
         # Clean up whitespace
         html_content = ' '.join(html_content.split())
-        print(f"HTML content length: {len(html_content)} characters")
+        print(f"[STEP 8] ✓ HTML content length: {len(html_content)} characters")
         print(f"HTML content preview: {html_content[:300]}...")
         
+        print("[STEP 9] Calling AI provider...")
         # Get AI provider and extract content with fallback
-        print(f"Calling AI provider: {ai_provider}")
+        print(f"AI provider: {ai_provider}")
         
         # Try with provided api_key first, then fallback to saved keys
         if api_key:
@@ -961,7 +821,7 @@ def generate_rss():
                 extraction_patterns=extraction_patterns
             )
             
-            print(f"Feed saved with ID: {feed_id}")
+            print(f"[STEP 11] ✓ Feed saved with ID: {feed_id}")
             rss_link = get_rss_link(feed_id)
             
             result = {
@@ -973,7 +833,10 @@ def generate_rss():
                 "items_count": len(ai_result.get('items', []))
             }
             
-            print(f"Returning success result: {result}")
+            print(f"[STEP 12] Returning success result...")
+            print(f"{'='*60}")
+            print(f"=== SUCCESS - Feed Generated ===")
+            print(f"{'='*60}\n")
             return jsonify(result)
             
         except Exception as db_error:
