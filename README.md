@@ -305,16 +305,6 @@ Feed Reader ← Auto Updates ← Smart Scraper ← Saved Patterns
 - 🎨 **Better UX**: Persistent theme, open session URLs, advanced cookie input
 - 🔒 **Security**: Prevents duplicate API keys across providers
 
-### 🔮 Future Enhancements
-- 🌍 **Multi-language Support**: Generate feeds in different languages using AI translation
-- 📊 **Analytics Dashboard**: Feed performance and update statistics
-- 🔄 **Webhook Support**: Real-time notifications for feed updates
-- 🎯 **Custom Patterns**: User-defined extraction rules
-- 📱 **Mobile App**: Native mobile application
-- 🔌 **Browser Extension**: One-click RSS generation from any page
-
-For now you can use [IMAP2RSS integration for email newsletters](https://github.com/abner-dos-reis/Imap2RSS)
-
 ✨ **Vision**: Transform any link into RSS XML for feed reader apps
 
 ## 🛠️ Development
@@ -407,43 +397,16 @@ FLASK_ENV=development
 - **Secure Defaults**: CORS protection and input validation
 - **Duplicate Prevention**: System prevents adding same key to multiple providers
 
-## 📋 Requirements
-
-**System:**
-- Docker 20.0+
-- Docker Compose 2.0+
-- 2GB RAM minimum
-- 1GB disk space
-
 **AI Providers (choose one or more):**
 - OpenAI API key (GPT models)
 - Google Gemini API key
 - Anthropic Claude API key
 - Perplexity AI API key
 
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## 🙋‍♂️ Support
-
-- **Documentation**: Check this README and code comments
-- **Issues**: Use GitHub Issues for bug reports
-- **Discussions**: Use GitHub Discussions for questions
-
-## 🌟 Acknowledgments
-
-- **AI Providers**: OpenAI, Google, Anthropic, Perplexity for excellent APIs
-- **Open Source**: Built with Flask, React, Bootstrap, and SQLite
-- **Community**: Thanks to all contributors and users
+MIT 
 
 ---
 
